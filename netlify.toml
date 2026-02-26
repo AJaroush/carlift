@@ -1,0 +1,24 @@
+ [build]
+   command = "npm run build"
+   publish = "dist"
+
+ # Local dev via Netlify (optional, for `netlify dev`)
+ [dev]
+   command = "npm run dev"
+   port = 5173
+   targetPort = 5173
+   autoLaunch = false
+
+ # Proxy API calls in production to the same backend used in Vite dev
+ [[redirects]]
+   from = "/api/*"
+   to = "https://n8n-analysis.teljoy.io/:splat"
+   status = 200
+   force = true
+
+ # SPA fallback for React Router
+ [[redirects]]
+   from = "/*"
+   to = "/index.html"
+   status = 200
+
