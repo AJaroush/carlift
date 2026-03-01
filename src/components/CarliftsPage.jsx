@@ -1,103 +1,5 @@
 import { useState } from 'react';
-
-const INITIAL_DRIVERS = [
-  {
-    id: 'DRV-001',
-    name: 'Ahmed Khan',
-    phone: '+971 50 123 4567',
-    vehicle: 'Toyota Hiace (14 Seater)',
-    plate: 'DXB A 12345',
-    pickupArea: 'JBR, Marina',
-    dropArea: 'JLT, Media City',
-    price: 120,
-    reliability: 'High',
-    active: true,
-  },
-  {
-    id: 'DRV-002',
-    name: 'Mohammed Ali',
-    phone: '+971 55 987 6543',
-    vehicle: 'Nissan Urvan (13 Seater)',
-    plate: 'DXB K 98765',
-    pickupArea: 'Deira',
-    dropArea: 'Bur Dubai, Karama',
-    price: 100,
-    reliability: 'Mid',
-    active: true,
-  },
-  {
-    id: 'DRV-003',
-    name: 'Raj Patel',
-    phone: '+971 52 456 7890',
-    vehicle: 'Toyota Coaster (22 Seater)',
-    plate: 'SHJ 4 5678',
-    pickupArea: 'Sharjah',
-    dropArea: 'Dubai (all areas)',
-    price: 150,
-    reliability: 'High',
-    active: true,
-  },
-  {
-    id: 'DRV-004',
-    name: 'Khalid Omar',
-    phone: '+971 50 333 4444',
-    vehicle: 'Hyundai H1 (9 Seater)',
-    plate: 'DXB M 33445',
-    pickupArea: 'Downtown',
-    dropArea: 'Business Bay, DIFC',
-    price: 130,
-    reliability: 'Low',
-    active: false,
-  },
-  {
-    id: 'DRV-005',
-    name: 'John Doe',
-    phone: '+971 56 111 2222',
-    vehicle: 'Toyota Hiace (14 Seater)',
-    plate: 'DXB L 11223',
-    pickupArea: 'Mirdif',
-    dropArea: 'Warqa, Rashidiya',
-    price: 110,
-    reliability: 'Mid',
-    active: true,
-  },
-  {
-    id: 'DRV-006',
-    name: 'Saeed Al-Maktoum',
-    phone: '+971 54 555 6666',
-    vehicle: 'Nissan Civilian (26 Seater)',
-    plate: 'DXB O 55667',
-    pickupArea: 'International City',
-    dropArea: 'Silicon Oasis',
-    price: 140,
-    reliability: 'High',
-    active: true,
-  },
-  {
-    id: 'DRV-007',
-    name: 'Peter Parker',
-    phone: '+971 58 777 8888',
-    vehicle: 'Toyota Hiace (14 Seater)',
-    plate: 'DXB P 77889',
-    pickupArea: 'JVC',
-    dropArea: 'Sports City, Motor City',
-    price: 115,
-    reliability: 'Mid',
-    active: false,
-  },
-  {
-    id: 'DRV-008',
-    name: 'Bruce Wayne',
-    phone: '+971 50 999 0000',
-    vehicle: 'Mercedes Sprinter (18 Seater)',
-    plate: 'DXB B 99000',
-    pickupArea: 'Palm Jumeirah',
-    dropArea: 'Dubai Marina',
-    price: 160,
-    reliability: 'High',
-    active: true,
-  },
-];
+import { useApp } from '../context/AppContext';
 
 const EMPTY_FORM = {
   name: '',
@@ -112,32 +14,56 @@ const EMPTY_FORM = {
 };
 
 export default function CarliftsPage() {
-  const [drivers, setDrivers] = useState(INITIAL_DRIVERS);
+  const { drivers, addDriver, updateDriver, toggleDriver } = useApp();
   const [showModal, setShowModal] = useState(false);
+  const [editingDriver, setEditingDriver] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
-
-  const handleToggle = (id) => {
-    setDrivers(prev =>
-      prev.map(d => d.id === id ? { ...d, active: !d.active } : d)
-    );
-  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm(prev => ({ ...prev, [name]: value }));
   };
 
+  const openAddModal = () => {
+    setEditingDriver(null);
+    setForm(EMPTY_FORM);
+    setShowModal(true);
+  };
+
+  const openEditModal = (driver) => {
+    setEditingDriver(driver);
+    setForm({
+      name: driver.name,
+      phone: driver.phone,
+      vehicle: driver.vehicle || '',
+      plate: driver.plate || '',
+      pickupArea: driver.pickupArea,
+      dropArea: driver.dropArea,
+      price: String(driver.price),
+      reliability: driver.reliability,
+      active: driver.active,
+    });
+    setShowModal(true);
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    const nextNum = drivers.length + 1;
-    const newDriver = {
-      ...form,
-      id: `DRV-${String(nextNum).padStart(3, '0')}`,
-      price: Number(form.price) || 0,
-      active: true,
-    };
-    setDrivers(prev => [...prev, newDriver]);
+    if (editingDriver) {
+      updateDriver(editingDriver.id, {
+        ...form,
+        price: Number(form.price) || 0,
+      });
+    } else {
+      const nextNum = drivers.length + 1;
+      addDriver({
+        ...form,
+        id: `DRV-${String(nextNum).padStart(3, '0')}`,
+        price: Number(form.price) || 0,
+        active: true,
+      });
+    }
     setForm(EMPTY_FORM);
+    setEditingDriver(null);
     setShowModal(false);
   };
 
@@ -148,7 +74,7 @@ export default function CarliftsPage() {
           <h1 className="carlifts-title">Carlifts</h1>
           <span className="driver-count">{drivers.length} Drivers</span>
         </div>
-        <button className="add-carlift-btn" onClick={() => setShowModal(true)}>
+        <button className="add-carlift-btn" onClick={openAddModal}>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M7 1v12M1 7h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
           </svg>
@@ -172,7 +98,12 @@ export default function CarliftsPage() {
           </thead>
           <tbody>
             {drivers.map((driver) => (
-              <DriverRow key={driver.id} driver={driver} onToggle={handleToggle} />
+              <DriverRow
+                key={driver.id}
+                driver={driver}
+                onToggle={toggleDriver}
+                onEdit={openEditModal}
+              />
             ))}
           </tbody>
         </table>
@@ -182,7 +113,7 @@ export default function CarliftsPage() {
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Add New Carlift</h2>
+              <h2>{editingDriver ? 'Edit Carlift' : 'Add New Carlift'}</h2>
               <button className="modal-close" onClick={() => setShowModal(false)}>
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                   <path d="M15 5L5 15M5 5l10 10" stroke="#64748B" strokeWidth="1.5" strokeLinecap="round"/>
@@ -230,7 +161,9 @@ export default function CarliftsPage() {
               </div>
               <div className="modal-actions">
                 <button type="button" className="btn-cancel" onClick={() => setShowModal(false)}>Cancel</button>
-                <button type="submit" className="btn-submit">Add Carlift</button>
+                <button type="submit" className="btn-submit">
+                  {editingDriver ? 'Save Changes' : 'Add Carlift'}
+                </button>
               </div>
             </form>
           </div>
@@ -240,7 +173,7 @@ export default function CarliftsPage() {
   );
 }
 
-function DriverRow({ driver, onToggle }) {
+function DriverRow({ driver, onToggle, onEdit }) {
   const reliabilityClass =
     driver.reliability === 'High' ? 'high' :
     driver.reliability === 'Mid' ? 'mid' : 'low';
@@ -296,18 +229,17 @@ function DriverRow({ driver, onToggle }) {
       </td>
       <td>
         <div className="carlift-actions">
+          <button className="edit-driver-btn" onClick={() => onEdit(driver)}>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M9.917 1.75a1.65 1.65 0 012.333 2.333L4.667 11.667 1.75 12.25l.583-2.917L9.917 1.75z" stroke="currentColor" strokeWidth="1.2"/>
+            </svg>
+            Edit
+          </button>
           <button className="whatsapp-btn">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path d="M12.25 6.708a5.25 5.25 0 01-.788 2.754 5.322 5.322 0 01-4.733 2.913 5.25 5.25 0 01-2.754-.787L1.75 12.25l.663-2.225A5.25 5.25 0 011.625 7.27a5.322 5.322 0 012.913-4.733A5.25 5.25 0 017.292 1.75h.312a5.306 5.306 0 015.146 5.146v.312z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
             WhatsApp
-          </button>
-          <button className="more-btn">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <circle cx="8" cy="3" r="1" fill="#94A3B8"/>
-              <circle cx="8" cy="8" r="1" fill="#94A3B8"/>
-              <circle cx="8" cy="13" r="1" fill="#94A3B8"/>
-            </svg>
           </button>
         </div>
       </td>

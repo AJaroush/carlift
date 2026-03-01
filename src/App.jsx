@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Header from './components/Header';
-import OrdersPage from './pages/OrdersPage';
+import WaitingListPage from './pages/WaitingListPage';
+import FollowUpPage from './pages/FollowUpPage';
 import CarliftsPage from './components/CarliftsPage';
 import './App.css';
 
@@ -10,8 +11,9 @@ function App() {
       <Header />
       <main className="main-content">
         <Routes>
-          <Route path="/" element={<Navigate to="/orders" replace />} />
-          <Route path="/orders" element={<OrdersPage />} />
+          <Route path="/" element={<Navigate to="/waiting-list" replace />} />
+          <Route path="/waiting-list" element={<WaitingListPage />} />
+          <Route path="/follow-up" element={<FollowUpPage />} />
           <Route path="/carlifts" element={<CarliftsPage />} />
         </Routes>
       </main>

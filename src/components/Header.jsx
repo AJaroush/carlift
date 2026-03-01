@@ -9,8 +9,11 @@ export default function Header() {
           <span className="logo-text">CARLIFT<span className="logo-accent">OPS</span></span>
         </div>
         <nav className="nav">
-          <NavLink to="/orders" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-            Orders
+          <NavLink to="/waiting-list" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+            Waiting List
+          </NavLink>
+          <NavLink to="/follow-up" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+            Follow-Up
           </NavLink>
           <NavLink to="/carlifts" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
             Carlifts
