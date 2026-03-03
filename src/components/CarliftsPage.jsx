@@ -14,7 +14,7 @@ const EMPTY_FORM = {
 };
 
 export default function CarliftsPage() {
-  const { drivers, addDriver, updateDriver, toggleDriver } = useApp();
+  const { drivers, addDriver, updateDriver, toggleDriver, deleteDriver } = useApp();
   const [showModal, setShowModal] = useState(false);
   const [editingDriver, setEditingDriver] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -103,6 +103,7 @@ export default function CarliftsPage() {
                 driver={driver}
                 onToggle={toggleDriver}
                 onEdit={openEditModal}
+                onDelete={deleteDriver}
               />
             ))}
           </tbody>
@@ -173,7 +174,7 @@ export default function CarliftsPage() {
   );
 }
 
-function DriverRow({ driver, onToggle, onEdit }) {
+function DriverRow({ driver, onToggle, onEdit, onDelete }) {
   const reliabilityClass =
     driver.reliability === 'High' ? 'high' :
     driver.reliability === 'Mid' ? 'mid' : 'low';
@@ -235,11 +236,11 @@ function DriverRow({ driver, onToggle, onEdit }) {
             </svg>
             Edit
           </button>
-          <button className="whatsapp-btn">
+          <button className="delete-driver-btn" onClick={() => { if (window.confirm(`Delete driver "${driver.name}"?`)) onDelete(driver.id); }}>
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M12.25 6.708a5.25 5.25 0 01-.788 2.754 5.322 5.322 0 01-4.733 2.913 5.25 5.25 0 01-2.754-.787L1.75 12.25l.663-2.225A5.25 5.25 0 011.625 7.27a5.322 5.322 0 012.913-4.733A5.25 5.25 0 017.292 1.75h.312a5.306 5.306 0 015.146 5.146v.312z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M1.75 3.5h10.5M4.667 3.5V2.333a1.167 1.167 0 011.166-1.166h2.334a1.167 1.167 0 011.166 1.166V3.5m1.75 0v8.167a1.167 1.167 0 01-1.166 1.166H4.083a1.167 1.167 0 01-1.166-1.166V3.5h8.166z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            WhatsApp
+            Delete
           </button>
         </div>
       </td>

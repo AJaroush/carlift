@@ -1,27 +1,39 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 
 const ARRIVAL_OPTIONS = ['', 'Yes', 'No', 'Failed to reach'];
 const TRANSPORT_OPTIONS = ['', 'Carlift', 'Taxi', 'Public transport'];
+const PRIORITY_OPTIONS = ['Normal', 'High', 'Urgent'];
+const PRIORITY_ORDER = { Urgent: 0, High: 1, Normal: 2 };
+const DAYS = [1, 2, 3];
+
+const EMPTY_DAY = { arrivalStatus: '', actualTransport: '', delayed: false, reason: '', notes: '' };
 
 export default function FollowUpPage() {
-  const { confirmedTrips, followUpData, updateFollowUp, moveBackToWaiting } = useApp();
+  const { followUpOrders, followUpData, updateFollowUp, moveBackToWaiting } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
 
-  const filteredTrips = useMemo(() => {
-    if (!searchQuery) return confirmedTrips;
-    const q = searchQuery.toLowerCase();
-    return confirmedTrips.filter(trip =>
-      trip.routeLabel?.toLowerCase().includes(q) ||
-      trip.driverName?.toLowerCase().includes(q) ||
-      trip.orders?.some(o =>
-        o.clientName?.toLowerCase().includes(q) ||
-        o.housemaidName?.toLowerCase().includes(q)
-      )
-    );
-  }, [confirmedTrips, searchQuery]);
+  const sortedOrders = useMemo(() => {
+    return [...followUpOrders].sort((a, b) => {
+      const pa = PRIORITY_ORDER[followUpData[a.orderId]?.priority || 'Normal'] ?? 2;
+      const pb = PRIORITY_ORDER[followUpData[b.orderId]?.priority || 'Normal'] ?? 2;
+      return pa - pb;
+    });
+  }, [followUpOrders, followUpData]);
 
-  if (confirmedTrips.length === 0) {
+  const filteredOrders = useMemo(() => {
+    if (!searchQuery) return sortedOrders;
+    const q = searchQuery.toLowerCase();
+    return sortedOrders.filter(fo =>
+      fo.order?.housemaidName?.toLowerCase().includes(q) ||
+      fo.order?.clientName?.toLowerCase().includes(q) ||
+      fo.driverName?.toLowerCase().includes(q) ||
+      fo.routeLabel?.toLowerCase().includes(q)
+    );
+  }, [sortedOrders, searchQuery]);
+
+  if (followUpOrders.length === 0) {
     return (
       <>
         <div className="page-header">
@@ -34,7 +46,7 @@ export default function FollowUpPage() {
             <circle cx="18" cy="20" r="2" fill="#E2E8F0"/>
             <circle cx="30" cy="20" r="2" fill="#E2E8F0"/>
           </svg>
-          <p>No trips in follow-up yet. Confirm drivers from the Waiting List to see them here.</p>
+          <p>No maids in follow-up yet. Mark messages as sent from the Waiting List to see them here.</p>
         </div>
       </>
     );
@@ -46,11 +58,7 @@ export default function FollowUpPage() {
         <h1>Follow-Up</h1>
         <div className="wl-stats-row">
           <span className="wl-stat">
-            <strong>{confirmedTrips.length}</strong> active trips
-          </span>
-          <span className="wl-stat-divider">|</span>
-          <span className="wl-stat">
-            <strong>{confirmedTrips.reduce((s, t) => s + (t.orders?.length || 0), 0)}</strong> maids
+            <strong>{followUpOrders.length}</strong> maid{followUpOrders.length !== 1 ? 's' : ''}
           </span>
         </div>
       </div>
@@ -67,14 +75,15 @@ export default function FollowUpPage() {
         />
       </div>
 
-      <div className="followup-list">
-        {filteredTrips.map((trip) => (
-          <FollowUpTripCard
-            key={trip.id}
-            trip={trip}
-            data={followUpData[trip.id] || {}}
-            onUpdate={(d) => updateFollowUp(trip.id, d)}
-            onMoveBack={() => moveBackToWaiting(trip.id)}
+      <div className="fu-cards-list">
+        {filteredOrders.map((fo) => (
+          <FollowUpCard
+            key={fo.orderId}
+            fo={fo}
+            data={followUpData[fo.orderId] || {}}
+            onSave={(d) => updateFollowUp(fo.orderId, d)}
+            onMoveBack={() => moveBackToWaiting(fo.orderId)}
+            onPriorityChange={(p) => updateFollowUp(fo.orderId, { priority: p })}
           />
         ))}
       </div>
@@ -82,181 +91,214 @@ export default function FollowUpPage() {
   );
 }
 
-function FollowUpTripCard({ trip, data, onUpdate, onMoveBack }) {
-  const [expanded, setExpanded] = useState(true);
-
-  const confirmedDate = trip.confirmedAt ? new Date(trip.confirmedAt) : new Date();
+function FollowUpCard({ fo, data, onSave, onMoveBack, onPriorityChange }) {
+  const order = fo.order;
   const now = new Date();
-  const daysSinceConfirm = Math.max(0, Math.ceil((now - confirmedDate) / (1000 * 60 * 60 * 24)));
 
-  const handleOrderUpdate = (orderId, field, value) => {
-    const orderData = data.orders || {};
-    const current = orderData[orderId] || {};
-    onUpdate({
-      orders: {
-        ...orderData,
-        [orderId]: { ...current, [field]: value },
-      },
-    });
-  };
+  const transferDate = order.transferDate ? new Date(order.transferDate.replace(' ', 'T')) : null;
+  const daysHired = transferDate ? Math.max(0, Math.ceil((now - transferDate) / (1000 * 60 * 60 * 24))) : '—';
 
-  const handleTransportChange = (value) => {
-    onUpdate({ transportationType: value });
+  // Calculate follow-up day: day 1 = confirmed today, day 2 = confirmed yesterday, etc.
+  const confirmedDate = fo.confirmedAt ? new Date(fo.confirmedAt) : null;
+  const confirmedDay = confirmedDate
+    ? new Date(confirmedDate.getFullYear(), confirmedDate.getMonth(), confirmedDate.getDate())
+    : null;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const followUpDays = confirmedDay ? Math.floor((today - confirmedDay) / (1000 * 60 * 60 * 24)) + 1 : 1;
+
+  const priority = data.priority || 'Normal';
+
+  const cyclePriority = useCallback(() => {
+    const currentIdx = PRIORITY_OPTIONS.indexOf(priority);
+    const next = PRIORITY_OPTIONS[(currentIdx + 1) % PRIORITY_OPTIONS.length];
+    onPriorityChange(next);
+  }, [priority, onPriorityChange]);
+
+  // Default to the current follow-up day (clamped to 1–3)
+  const currentDay = typeof followUpDays === 'number' ? Math.min(Math.max(followUpDays, 1), 3) : 1;
+  const [selectedDay, setSelectedDay] = useState(currentDay);
+
+  // Load saved data for current day
+  const savedDayData = data[selectedDay] || EMPTY_DAY;
+
+  // Local draft state — initialized from saved data
+  const [draft, setDraft] = useState({ ...EMPTY_DAY, ...savedDayData });
+
+  // Check if draft differs from saved
+  const isDirty = JSON.stringify(draft) !== JSON.stringify({ ...EMPTY_DAY, ...savedDayData });
+
+  const handleDaySwitch = useCallback((day) => {
+    setSelectedDay(day);
+    const dayData = data[day] || EMPTY_DAY;
+    setDraft({ ...EMPTY_DAY, ...dayData });
+  }, [data]);
+
+  const handleFieldChange = useCallback((field, value) => {
+    setDraft(prev => ({ ...prev, [field]: value }));
+  }, []);
+
+  const handleSave = useCallback(() => {
+    onSave({ [selectedDay]: { ...draft } });
+  }, [onSave, selectedDay, draft]);
+
+  // Check which days have saved data
+  const dayHasData = (day) => {
+    const d = data[day];
+    if (!d) return false;
+    return d.arrivalStatus || d.actualTransport || d.delayed || d.reason || d.notes;
   };
 
   return (
-    <div className="followup-card">
-      <div className="followup-header" onClick={() => setExpanded(!expanded)}>
-        <div className="followup-route-info">
-          <div className="followup-route-label">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <circle cx="4" cy="4" r="2.5" stroke="#3B82F6" strokeWidth="1.3"/>
-              <circle cx="12" cy="12" r="2.5" stroke="#EF4444" strokeWidth="1.3"/>
-              <path d="M5.5 5.5L10.5 10.5" stroke="#94A3B8" strokeWidth="1.2" strokeDasharray="2 2"/>
-            </svg>
-            <span>{trip.routeLabel}</span>
+    <div className={`fu-card fu-card-priority-${priority.toLowerCase()}`}>
+      {/* Card Header — maid info */}
+      <div className="fu-card-header">
+        <div className="fu-card-info-row">
+          <div className="fu-card-info-item">
+            <span className="fu-card-label">MAID</span>
+            <span className="fu-card-maid-name">{order.housemaidName || '—'}</span>
+            {order.housemaidPhone && (
+              <span className="fu-card-sub">{order.housemaidPhone}</span>
+            )}
           </div>
-          <div className="followup-meta">
-            <span className="followup-badge driver">
+          <div className="fu-card-info-item">
+            <span className="fu-card-label">CLIENT</span>
+            <Link to={`/client/${encodeURIComponent(order.clientName)}`} className="client-link" style={{ fontWeight: 600 }}>
+              {order.clientName || '—'}
+            </Link>
+            <span className="fu-card-sub">{order.clientLocation || order.clientArea || '—'}</span>
+          </div>
+          <div className="fu-card-info-item">
+            <span className="fu-card-label">ROUTE</span>
+            <span>{fo.routeLabel || '—'}</span>
+            <span className="fu-card-sub">{fo.timeWindow || '—'}</span>
+          </div>
+          <div className="fu-card-info-item">
+            <span className="fu-card-label">DRIVER</span>
+            <span>{fo.driverName || '—'}</span>
+            <span className="fu-card-sub">{fo.driverPhone || ''}</span>
+          </div>
+          <div className="fu-card-info-item">
+            <span className="fu-card-label">DAYS HIRED</span>
+            <span className="days-hired-badge">{daysHired} days</span>
+          </div>
+          <div className="fu-card-info-item">
+            <span className="fu-card-label">FOLLOW-UP DAYS</span>
+            <span className="followup-days-badge">{followUpDays} {followUpDays === 1 ? 'day' : 'days'}</span>
+          </div>
+          <div className="fu-card-info-item">
+            <span className="fu-card-label">PLANNED</span>
+            <span className="fu-planned-value">{fo.plannedTransportation || 'Carlift'}</span>
+          </div>
+          <div className="fu-card-actions-top">
+            <button
+              className={`fu-priority-btn priority-${priority.toLowerCase()}`}
+              onClick={cyclePriority}
+              title="Click to cycle priority"
+            >
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <circle cx="6" cy="3.5" r="2" stroke="currentColor" strokeWidth="1.1"/>
-                <path d="M1.5 10.5c0-2 1.8-3.5 4.5-3.5s4.5 1.5 4.5 3.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+                <path d="M6 1v7M6 1L3 4M6 1l3 3M2 11h8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
-              {trip.driverName}
-            </span>
-            <span className="followup-badge days">Day {daysSinceConfirm}</span>
-            <span className="followup-badge transport">
-              {data.transportationType || trip.plannedTransportation || 'Carlift'}
-            </span>
-          </div>
-        </div>
-        <svg className={`chevron ${expanded ? 'open' : ''}`} width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path d="M4 6l4 4 4-4" stroke="#64748B" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      </div>
-
-      {expanded && (
-        <div className="followup-body">
-          {/* Per-order tracking */}
-          <table className="followup-table">
-            <thead>
-              <tr>
-                <th>MAID</th>
-                <th>CLIENT</th>
-                <th>DAYS HIRED</th>
-                <th>ARRIVAL STATUS</th>
-                <th>ACTUAL TRANSPORT</th>
-                <th>DELAY</th>
-                <th>REASON</th>
-                <th>AGENT NOTES</th>
-              </tr>
-            </thead>
-            <tbody>
-              {trip.orders?.map((order) => {
-                const orderId = order.id || order.contractId;
-                const orderData = (data.orders || {})[orderId] || {};
-
-                const transferDate = order.transferDate ? new Date(order.transferDate.replace(' ', 'T')) : null;
-                const daysHired = transferDate ? Math.max(0, Math.ceil((now - transferDate) / (1000 * 60 * 60 * 24))) : '—';
-
-                return (
-                  <tr key={orderId}>
-                    <td>
-                      <div className="fu-maid-cell">
-                        <span className="fu-maid-name">{order.housemaidName || '—'}</span>
-                        {order.housemaidPhone && (
-                          <span className="fu-maid-phone">{order.housemaidPhone}</span>
-                        )}
-                      </div>
-                    </td>
-                    <td>{order.clientName || '—'}</td>
-                    <td>
-                      <span className="days-hired-badge">{daysHired} days</span>
-                    </td>
-                    <td>
-                      <select
-                        className="fu-select"
-                        value={orderData.arrivalStatus || ''}
-                        onChange={(e) => handleOrderUpdate(orderId, 'arrivalStatus', e.target.value)}
-                      >
-                        {ARRIVAL_OPTIONS.map(opt => (
-                          <option key={opt} value={opt}>{opt || '— Select —'}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <select
-                        className="fu-select"
-                        value={orderData.actualTransport || ''}
-                        onChange={(e) => handleOrderUpdate(orderId, 'actualTransport', e.target.value)}
-                      >
-                        {TRANSPORT_OPTIONS.map(opt => (
-                          <option key={opt} value={opt}>{opt || '— Select —'}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <div
-                        className={`delay-toggle ${orderData.delayed ? 'delayed' : ''}`}
-                        onClick={() => handleOrderUpdate(orderId, 'delayed', !orderData.delayed)}
-                      >
-                        {orderData.delayed ? 'Delayed' : 'On time'}
-                      </div>
-                    </td>
-                    <td>
-                      <input
-                        type="text"
-                        className="fu-input"
-                        placeholder="Reason..."
-                        value={orderData.reason || ''}
-                        onChange={(e) => handleOrderUpdate(orderId, 'reason', e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <textarea
-                        className="fu-textarea"
-                        placeholder="Agent notes..."
-                        value={orderData.notes || ''}
-                        onChange={(e) => handleOrderUpdate(orderId, 'notes', e.target.value)}
-                        rows={2}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-
-          {/* Trip-level actions */}
-          <div className="followup-actions">
-            <div className="fu-action-left">
-              <label className="fu-transport-label">
-                Planned Transportation:
-                <span className="fu-planned-transport">{trip.plannedTransportation || 'Carlift'}</span>
-              </label>
-              <label className="fu-transport-change">
-                Change to:
-                <select
-                  className="fu-select"
-                  value={data.transportationType || ''}
-                  onChange={(e) => handleTransportChange(e.target.value)}
-                >
-                  <option value="">Keep current</option>
-                  <option value="Carlift">Carlift</option>
-                  <option value="Taxi">Taxi</option>
-                  <option value="Public transport">Public transport</option>
-                </select>
-              </label>
-            </div>
+              {priority}
+            </button>
             <button className="move-back-btn" onClick={onMoveBack}>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path d="M8.167 11.083L4.083 7l4.084-4.083" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M7 9.5L3.5 6 7 2.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
-              Move back to Waiting List
+              Move Back
             </button>
           </div>
         </div>
-      )}
+      </div>
+
+      {/* Day Fields */}
+      <div className="fu-day-fields">
+        <div className="fu-day-fields-grid">
+          <div className="fu-field-group">
+            <label className="fu-field-label">Follow-Up Day</label>
+            <select
+              className="fu-select fu-day-select"
+              value={selectedDay}
+              onChange={(e) => handleDaySwitch(Number(e.target.value))}
+            >
+              {Array.from({ length: currentDay }, (_, i) => i + 1).map(day => (
+                <option key={day} value={day}>
+                  Day {day}{day === currentDay ? ' (current)' : ''}{dayHasData(day) ? ' ●' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="fu-field-group">
+            <label className="fu-field-label">Arrival Status</label>
+            <select
+              className="fu-select"
+              value={draft.arrivalStatus || ''}
+              onChange={(e) => handleFieldChange('arrivalStatus', e.target.value)}
+            >
+              {ARRIVAL_OPTIONS.map(opt => (
+                <option key={opt} value={opt}>{opt || '— Select —'}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="fu-field-group">
+            <label className="fu-field-label">Actual Transport</label>
+            <select
+              className="fu-select"
+              value={draft.actualTransport || ''}
+              onChange={(e) => handleFieldChange('actualTransport', e.target.value)}
+            >
+              {TRANSPORT_OPTIONS.map(opt => (
+                <option key={opt} value={opt}>{opt || '— Select —'}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="fu-field-group">
+            <label className="fu-field-label">Delay</label>
+            <div
+              className={`delay-toggle ${draft.delayed ? 'delayed' : ''}`}
+              onClick={() => handleFieldChange('delayed', !draft.delayed)}
+            >
+              {draft.delayed ? 'Delayed' : 'On time'}
+            </div>
+          </div>
+
+          <div className="fu-field-group">
+            <label className="fu-field-label">Reason</label>
+            <input
+              type="text"
+              className="fu-input"
+              placeholder="Reason..."
+              value={draft.reason || ''}
+              onChange={(e) => handleFieldChange('reason', e.target.value)}
+            />
+          </div>
+
+          <div className="fu-field-group fu-field-notes">
+            <label className="fu-field-label">Agent Notes</label>
+            <textarea
+              className="fu-textarea"
+              placeholder="Agent notes..."
+              value={draft.notes || ''}
+              onChange={(e) => handleFieldChange('notes', e.target.value)}
+              rows={2}
+            />
+          </div>
+        </div>
+
+        <div className="fu-save-row">
+          <button
+            className={`fu-save-btn ${isDirty ? 'has-changes' : ''}`}
+            onClick={handleSave}
+            disabled={!isDirty}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M11.667 4.083L5.25 10.5 2.333 7.583" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            {isDirty ? `Save Day ${selectedDay}` : 'Saved'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,19 +1,62 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { suggestDrivers, formatTimeTo12h, addHours } from '../utils/clustering';
+import { suggestDrivers, suggestedPickupTime, formatTimeTo12h, addHours } from '../utils/clustering';
 import DriverMessageBubble from './DriverMessageBubble';
 import MaidMessageBubble from './MaidMessageBubble';
 
+function generatePickupTimes() {
+  const times = [];
+  for (let h = 5; h <= 11; h++) {
+    for (let m = 0; m < 60; m += 15) {
+      const time24 = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      const period = h >= 12 ? 'PM' : 'AM';
+      const h12 = h % 12 || 12;
+      const label = `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`;
+      times.push({ value: time24, label });
+    }
+  }
+  return times;
+}
+
+const PICKUP_TIMES = generatePickupTimes();
+
 export default function TripCard({ trip }) {
-  const { drivers, confirmTrip } = useApp();
-  const [selectedDriverId, setSelectedDriverId] = useState('');
-  const [isConfirmed, setIsConfirmed] = useState(false);
-  const [messageSent, setMessageSent] = useState({});
-  const [expanded, setExpanded] = useState(false);
+  const { drivers, confirmOrder, confirmTripDriver, tripAssignments } = useApp();
+
+  // Check if any order in this trip already has a confirmed assignment (survives re-clustering)
+  const existingAssignment = useMemo(() => {
+    for (const order of trip.orders) {
+      const oid = order.id || order.contractId;
+      if (tripAssignments[oid]) return tripAssignments[oid];
+    }
+    return null;
+  }, [trip.orders, tripAssignments]);
+
+  // Auto-expand if this trip has a confirmed driver (so it stays open after re-clustering)
+  const [expanded, setExpanded] = useState(!!existingAssignment);
+
+  const isConfirmed = !!existingAssignment;
+
+  const [selectedDriverId, setSelectedDriverId] = useState(existingAssignment?.driverId || '');
+  const suggestedTime = suggestedPickupTime(trip);
+  const [selectedPickupTime, setSelectedPickupTime] = useState(existingAssignment?.pickupTime || suggestedTime);
 
   const suggestedDrivers = suggestDrivers(trip, drivers);
   const allActiveDrivers = drivers.filter(d => d.active);
-  const selectedDriver = drivers.find(d => d.id === selectedDriverId) || null;
+  const selectedDriver = drivers.find(d => d.id === (isConfirmed ? existingAssignment.driverId : selectedDriverId)) || null;
+
+  const pickupTimeLabel = useMemo(() => {
+    const pt = isConfirmed ? existingAssignment?.pickupTime : selectedPickupTime;
+    if (!pt) return trip.timeWindow;
+    const found = PICKUP_TIMES.find(t => t.value === pt);
+    return found ? found.label : trip.timeWindow;
+  }, [selectedPickupTime, existingAssignment, isConfirmed, trip.timeWindow]);
+
+  const tripWithPickup = useMemo(() => ({
+    ...trip,
+    timeWindow: pickupTimeLabel,
+  }), [trip, pickupTimeLabel]);
 
   const estimatedCost = selectedDriver
     ? selectedDriver.price * trip.seatCount
@@ -21,20 +64,19 @@ export default function TripCard({ trip }) {
 
   const handleConfirm = () => {
     if (!selectedDriverId) return;
-    setIsConfirmed(true);
-    confirmTrip({
-      ...trip,
-      driverId: selectedDriverId,
-      driverName: selectedDriver?.name,
-      driverPhone: selectedDriver?.phone,
-      driverPrice: selectedDriver?.price,
-      plannedTransportation: 'Carlift',
-    });
+    const driver = drivers.find(d => d.id === selectedDriverId);
+    if (!driver) return;
+    const orderIds = trip.orders.map(o => o.id || o.contractId);
+    confirmTripDriver(orderIds, driver, selectedPickupTime);
   };
 
-  const handleMessageSent = (orderId) => {
-    setMessageSent(prev => ({ ...prev, [orderId]: !prev[orderId] }));
+  const handleMessageSent = (order) => {
+    if (!selectedDriver) return;
+    confirmOrder(order, selectedDriver, tripWithPickup);
   };
+
+  // Count how many are still unsent (not needed for disabling since orders just disappear from trip)
+  const unsentCount = trip.orders.length;
 
   return (
     <div className={`trip-card ${isConfirmed ? 'confirmed' : ''}`}>
@@ -57,13 +99,15 @@ export default function TripCard({ trip }) {
               </svg>
               {trip.seatCount} seat{trip.seatCount > 1 ? 's' : ''}
             </span>
-            <span className="trip-badge time">
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.1"/>
-                <path d="M6 3v3l2 1" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
-              </svg>
-              {trip.timeWindow}
-            </span>
+            {suggestedTime && (
+              <span className="trip-badge time">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.1"/>
+                  <path d="M6 3v3l2 1" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+                </svg>
+                Suggested: {PICKUP_TIMES.find(t => t.value === suggestedTime)?.label || suggestedTime}
+              </span>
+            )}
             {estimatedCost > 0 && (
               <span className="trip-badge cost">AED {estimatedCost}</span>
             )}
@@ -84,8 +128,7 @@ export default function TripCard({ trip }) {
                 <tr>
                   <th>MAID</th>
                   <th>CLIENT</th>
-                  <th>WORKING HOURS</th>
-                  <th>PICKUP TIME</th>
+                  <th>DUTY TIME</th>
                 </tr>
               </thead>
               <tbody>
@@ -105,15 +148,14 @@ export default function TripCard({ trip }) {
                       </td>
                       <td>
                         <div className="order-client">
-                          <span>{order.clientName || '—'}</span>
+                          <Link to={`/client/${encodeURIComponent(order.clientName)}`} className="client-link" style={{ fontWeight: 600 }}>
+                            {order.clientName || '—'}
+                          </Link>
                           <span className="client-loc">{order.clientLocation || order.clientArea || '—'}</span>
                         </div>
                       </td>
                       <td>
                         <span className="working-hours">{pickTime} - {retTime}</span>
-                      </td>
-                      <td>
-                        <span className="pickup-time-badge">{pickTime}</span>
                       </td>
                     </tr>
                   );
@@ -174,20 +216,42 @@ export default function TripCard({ trip }) {
 
               {/* Driver Message Bubble */}
               {selectedDriverId && (
-                <DriverMessageBubble trip={trip} driver={selectedDriver} />
+                <DriverMessageBubble trip={tripWithPickup} driver={selectedDriver} />
               )}
 
-              {/* Confirm Button */}
-              <button
-                className="confirm-btn"
-                disabled={!selectedDriverId}
-                onClick={handleConfirm}
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path d="M11.667 4.083L5.25 10.5 2.333 7.583" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                Driver Confirmed
-              </button>
+              {/* Pickup Time + Confirm Button */}
+              <div className="confirm-row">
+                <div className="pickup-time-select-group">
+                  <label className="pickup-time-label">
+                    Pickup Time
+                    {suggestedTime && (
+                      <span className="suggested-time-hint"> (suggested: {PICKUP_TIMES.find(t => t.value === suggestedTime)?.label})</span>
+                    )}
+                  </label>
+                  <select
+                    className="pickup-time-select"
+                    value={selectedPickupTime}
+                    onChange={(e) => setSelectedPickupTime(e.target.value)}
+                  >
+                    <option value="">Select pickup time...</option>
+                    {PICKUP_TIMES.map(t => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}{t.value === suggestedTime ? ' ★' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  className="confirm-btn"
+                  disabled={!selectedDriverId}
+                  onClick={handleConfirm}
+                >
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M11.667 4.083L5.25 10.5 2.333 7.583" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  Driver Confirmed
+                </button>
+              </div>
             </div>
           )}
 
@@ -198,22 +262,26 @@ export default function TripCard({ trip }) {
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                   <path d="M13.333 4.667L6 12 2.667 8.667" stroke="#16A34A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
-                Driver confirmed: {selectedDriver?.name} ({selectedDriver?.phone})
+                Driver confirmed: {existingAssignment?.driverName} ({existingAssignment?.driverPhone})
+                {existingAssignment?.pickupTime && <> &middot; Pickup: {pickupTimeLabel}</>}
               </div>
-              <div className="section-label">Maid Messages</div>
+              <div className="section-label">
+                Maid Messages ({trip.orders.length} remaining)
+              </div>
               {trip.orders.map((order) => {
                 const orderId = order.id || order.contractId;
                 return (
                   <div key={orderId} className="maid-message-row">
-                    <MaidMessageBubble order={order} driver={selectedDriver} trip={trip} />
-                    <label className="sent-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={!!messageSent[orderId]}
-                        onChange={() => handleMessageSent(orderId)}
-                      />
-                      <span>Message Sent</span>
-                    </label>
+                    <MaidMessageBubble order={order} driver={selectedDriver} trip={tripWithPickup} />
+                    <button
+                      className="message-sent-btn"
+                      onClick={() => handleMessageSent(order)}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                        <path d="M12.25 6.708a5.25 5.25 0 01-.788 2.754 5.322 5.322 0 01-4.733 2.913 5.25 5.25 0 01-2.754-.787L1.75 12.25l.663-2.225A5.25 5.25 0 011.625 7.27a5.322 5.322 0 012.913-4.733A5.25 5.25 0 017.292 1.75h.312a5.306 5.306 0 015.146 5.146v.312z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      Message Sent
+                    </button>
                   </div>
                 );
               })}

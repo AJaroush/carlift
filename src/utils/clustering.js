@@ -71,7 +71,7 @@ export function clusterOrders(orders) {
     }
   }
 
-  return clusters.map((cluster, idx) => {
+  return clusters.map((cluster) => {
     const pickupLabel = cluster.orders[0].pickupArea
       || cluster.orders[0].maidLocation
       || cluster.orders[0].typeOfTheContractLabel
@@ -83,13 +83,23 @@ export function clusterOrders(orders) {
 
     const timeWindow = formatTimeWindow(cluster.avgTime);
 
+    // Stable ID based on sorted order IDs so it doesn't shift when other clusters change
+    const stableId = cluster.orders
+      .map(o => o.id || o.contractId)
+      .sort()
+      .join('_');
+
+    const validTimes = cluster.orders.map(parseTime).filter(t => t !== null);
+    const earliestTime = validTimes.length > 0 ? Math.min(...validTimes) : null;
+
     return {
-      id: `cluster-${idx}`,
+      id: `cluster-${stableId}`,
       routeLabel: `${pickupLabel} → ${dropoffLabel}`,
       pickupLabel,
       dropoffLabel,
       timeWindow,
       avgTime: cluster.avgTime,
+      earliestTime,
       orders: cluster.orders,
       seatCount: cluster.orders.length,
       orderIds: cluster.orders.map(o => o.id || o.contractId),
@@ -127,6 +137,20 @@ export function addHours(time24, hours) {
   const period = newH >= 12 ? 'PM' : 'AM';
   const h12 = newH % 12 || 12;
   return `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+/**
+ * Given a trip's earliestTime (minutes since midnight), return a suggested
+ * pickup time value (HH:MM 24h, rounded down to the nearest 15-min slot)
+ * that is 30 minutes before the earliest maid start.
+ */
+export function suggestedPickupTime(trip) {
+  if (trip.earliestTime == null) return '';
+  const target = Math.max(0, trip.earliestTime - 30);
+  const h = Math.floor(target / 60);
+  const m = Math.floor((target % 60) / 15) * 15;
+  if (h < 5 || h > 11) return '';
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
 /**

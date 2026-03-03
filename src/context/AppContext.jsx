@@ -343,13 +343,16 @@ export function AppProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [drivers, setDrivers] = useState(() => loadFromStorage('carlift_drivers', INITIAL_DRIVERS));
-  const [confirmedTrips, setConfirmedTrips] = useState(() => loadFromStorage('carlift_confirmed_trips', []));
+  const [followUpOrders, setFollowUpOrders] = useState(() => loadFromStorage('carlift_followup_orders', []));
   const [followUpData, setFollowUpData] = useState(() => loadFromStorage('carlift_followup_data', {}));
+  // Track confirmed driver assignments per order so TripCard state survives re-clustering
+  const [tripAssignments, setTripAssignments] = useState(() => loadFromStorage('carlift_trip_assignments', {}));
 
   // Persist to localStorage
   useEffect(() => { saveToStorage('carlift_drivers', drivers); }, [drivers]);
-  useEffect(() => { saveToStorage('carlift_confirmed_trips', confirmedTrips); }, [confirmedTrips]);
+  useEffect(() => { saveToStorage('carlift_followup_orders', followUpOrders); }, [followUpOrders]);
   useEffect(() => { saveToStorage('carlift_followup_data', followUpData); }, [followUpData]);
+  useEffect(() => { saveToStorage('carlift_trip_assignments', tripAssignments); }, [tripAssignments]);
 
   const fetchOrders = useCallback(async () => {
     if (USE_MOCK) {
@@ -373,32 +376,62 @@ export function AppProvider({ children }) {
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
-  // Filter out orders that are already confirmed (in follow-up)
-  const confirmedOrderIds = new Set(confirmedTrips.flatMap(t => t.orderIds || []));
-  const waitingOrders = orders.filter(o => !confirmedOrderIds.has(o.id || o.contractId));
+  // Filter out orders that are already in follow-up
+  const followUpOrderIds = new Set(followUpOrders.map(o => o.orderId));
+  const waitingOrders = orders.filter(o => !followUpOrderIds.has(o.id || o.contractId));
 
-  const confirmTrip = useCallback((trip) => {
-    const tripRecord = {
-      id: `TRIP-${Date.now()}`,
-      ...trip,
-      confirmedAt: new Date().toISOString(),
-    };
-    setConfirmedTrips(prev => [...prev, tripRecord]);
-  }, []);
-
-  const moveBackToWaiting = useCallback((tripId) => {
-    setConfirmedTrips(prev => prev.filter(t => t.id !== tripId));
-    setFollowUpData(prev => {
+  // Confirm a driver for a trip — stores assignment for ALL orders in the trip
+  const confirmTripDriver = useCallback((orderIds, driverInfo, pickupTime) => {
+    setTripAssignments(prev => {
       const next = { ...prev };
-      delete next[tripId];
+      for (const oid of orderIds) {
+        next[oid] = { driverId: driverInfo.id, driverName: driverInfo.name, driverPhone: driverInfo.phone, driverPrice: driverInfo.price, pickupTime };
+      }
       return next;
     });
   }, []);
 
-  const updateFollowUp = useCallback((tripId, data) => {
+  // Move a single order to follow-up with its driver/trip context
+  const confirmOrder = useCallback((order, driverInfo, tripInfo) => {
+    const orderId = order.id || order.contractId;
+    setFollowUpOrders(prev => {
+      if (prev.some(o => o.orderId === orderId)) return prev;
+      return [...prev, {
+        orderId,
+        order,
+        driverName: driverInfo.name,
+        driverPhone: driverInfo.phone,
+        driverPrice: driverInfo.price,
+        driverId: driverInfo.id,
+        routeLabel: tripInfo.routeLabel,
+        pickupLabel: tripInfo.pickupLabel,
+        dropoffLabel: tripInfo.dropoffLabel,
+        timeWindow: tripInfo.timeWindow,
+        plannedTransportation: 'Carlift',
+        confirmedAt: new Date().toISOString(),
+      }];
+    });
+    // Clean up the trip assignment for this order
+    setTripAssignments(prev => {
+      const next = { ...prev };
+      delete next[orderId];
+      return next;
+    });
+  }, []);
+
+  const moveBackToWaiting = useCallback((orderId) => {
+    setFollowUpOrders(prev => prev.filter(o => o.orderId !== orderId));
+    setFollowUpData(prev => {
+      const next = { ...prev };
+      delete next[orderId];
+      return next;
+    });
+  }, []);
+
+  const updateFollowUp = useCallback((orderId, data) => {
     setFollowUpData(prev => ({
       ...prev,
-      [tripId]: { ...(prev[tripId] || {}), ...data },
+      [orderId]: { ...(prev[orderId] || {}), ...data },
     }));
   }, []);
 
@@ -414,6 +447,10 @@ export function AppProvider({ children }) {
     setDrivers(prev => prev.map(d => d.id === id ? { ...d, active: !d.active } : d));
   }, []);
 
+  const deleteDriver = useCallback((id) => {
+    setDrivers(prev => prev.filter(d => d.id !== id));
+  }, []);
+
   return (
     <AppContext.Provider value={{
       orders,
@@ -425,8 +462,11 @@ export function AppProvider({ children }) {
       addDriver,
       updateDriver,
       toggleDriver,
-      confirmedTrips,
-      confirmTrip,
+      deleteDriver,
+      followUpOrders,
+      confirmOrder,
+      confirmTripDriver,
+      tripAssignments,
       moveBackToWaiting,
       followUpData,
       updateFollowUp,

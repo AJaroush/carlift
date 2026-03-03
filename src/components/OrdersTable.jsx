@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { mapStatus } from '../App';
 
 export default function OrdersTable({ orders, loading, error }) {
@@ -71,7 +72,9 @@ function OrderRow({ order }) {
     <tr>
       <td>
         <div className="client-cell">
-          <div className="client-name">{order.clientName || '—'}</div>
+          <Link to={`/client/${encodeURIComponent(order.clientName)}`} className="client-name client-link">
+            {order.clientName || '—'}
+          </Link>
           <div className="maid-name">
             <span className="maid-dot"></span>
             {order.housemaidName || '—'}
