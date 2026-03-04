@@ -1,11 +1,26 @@
 /**
- * Cluster orders into trips by pickup area, dropoff area, and time window.
+ * Cluster orders into trips by pickup/dropoff proximity and time window.
  *
- * Since the API may not have precise geo-coordinates, we use text-based
- * area matching on available fields.
+ * Uses geo-coordinates (maidLat/maidLong, clientLat/clientLong) when available
+ * for distance-based clustering, falling back to text-based area matching.
  */
 
 const TIME_WINDOW_MINUTES = 60;
+const GEO_RADIUS_KM = 5; // max distance in km to cluster maids together
+
+/**
+ * Haversine distance between two lat/long points in km.
+ */
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 function parseTime(order) {
   const timeStr = order.creationDate?.split(' ')[1];
@@ -24,34 +39,53 @@ function getDropoffArea(order) {
 
 function areasMatch(a, b) {
   if (a === b) return true;
-  // Check if one contains the other or they share a keyword
   const wordsA = a.split(/[,\s]+/).filter(Boolean);
   const wordsB = b.split(/[,\s]+/).filter(Boolean);
   return wordsA.some(w => w.length > 2 && wordsB.includes(w));
 }
 
 function timesClose(t1, t2) {
-  if (t1 === null || t2 === null) return true; // if we can't parse, group them
+  if (t1 === null || t2 === null) return true;
   return Math.abs(t1 - t2) <= TIME_WINDOW_MINUTES;
+}
+
+/**
+ * Check if two orders are near each other based on maid pickup locations.
+ * Uses geo-coordinates if both have them, otherwise falls back to text matching.
+ */
+function pickupsNear(orderA, orderB) {
+  if (orderA.maidLat && orderA.maidLong && orderB.maidLat && orderB.maidLong) {
+    return haversineKm(orderA.maidLat, orderA.maidLong, orderB.maidLat, orderB.maidLong) <= GEO_RADIUS_KM;
+  }
+  return areasMatch(getPickupArea(orderA), getPickupArea(orderB));
+}
+
+/**
+ * Check if two orders have nearby dropoff (client) locations.
+ * Uses geo-coordinates if both have them, otherwise falls back to text matching.
+ */
+function dropoffsNear(orderA, orderB) {
+  if (orderA.clientLat && orderA.clientLong && orderB.clientLat && orderB.clientLong) {
+    return haversineKm(orderA.clientLat, orderA.clientLong, orderB.clientLat, orderB.clientLong) <= GEO_RADIUS_KM;
+  }
+  return areasMatch(getDropoffArea(orderA), getDropoffArea(orderB));
 }
 
 export function clusterOrders(orders) {
   const clusters = [];
 
   for (const order of orders) {
-    const pickup = getPickupArea(order);
-    const dropoff = getDropoffArea(order);
     const time = parseTime(order);
 
     let matched = false;
     for (const cluster of clusters) {
+      const representative = cluster.orders[0];
       if (
-        areasMatch(cluster.pickupArea, pickup) &&
-        areasMatch(cluster.dropoffArea, dropoff) &&
+        pickupsNear(representative, order) &&
+        dropoffsNear(representative, order) &&
         timesClose(cluster.avgTime, time)
       ) {
         cluster.orders.push(order);
-        // Update average time
         const validTimes = cluster.orders.map(parseTime).filter(t => t !== null);
         cluster.avgTime = validTimes.length > 0
           ? Math.round(validTimes.reduce((a, b) => a + b, 0) / validTimes.length)
@@ -63,8 +97,8 @@ export function clusterOrders(orders) {
 
     if (!matched) {
       clusters.push({
-        pickupArea: pickup,
-        dropoffArea: dropoff,
+        pickupArea: getPickupArea(order),
+        dropoffArea: getDropoffArea(order),
         avgTime: time,
         orders: [order],
       });

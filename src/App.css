@@ -1595,6 +1595,22 @@
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
+.price-input {
+  padding: 8px 12px;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  background: #fff;
+  width: 120px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.price-input:focus {
+  border-color: #3B82F6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  outline: none;
+}
+
 .confirm-btn {
   display: inline-flex;
   align-items: center;

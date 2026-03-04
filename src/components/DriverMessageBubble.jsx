@@ -1,13 +1,14 @@
 import { useState } from 'react';
 
-export default function DriverMessageBubble({ trip, driver }) {
+export default function DriverMessageBubble({ trip, driver, customPrice }) {
   const [copied, setCopied] = useState(false);
 
   const pickupAddress = trip.pickupLabel || 'TBD';
   const dropoffAddress = trip.dropoffLabel || 'TBD';
   const pickupTime = trip.timeWindow || 'TBD';
   const returnTime = trip.returnTime || 'TBD';
-  const price = driver?.price ? `${driver.price} AED` : 'TBD';
+  const priceValue = customPrice || driver?.price;
+  const price = priceValue ? `${priceValue} AED` : 'TBD';
   const seatCount = trip.seatCount || trip.orders?.length || 1;
 
   const message = `Hi 🙂

@@ -41,6 +41,7 @@ export default function TripCard({ trip }) {
   const [selectedDriverId, setSelectedDriverId] = useState(existingAssignment?.driverId || '');
   const suggestedTime = suggestedPickupTime(trip);
   const [selectedPickupTime, setSelectedPickupTime] = useState(existingAssignment?.pickupTime || suggestedTime);
+  const [customPrice, setCustomPrice] = useState(existingAssignment?.driverPrice || '');
 
   const suggestedDrivers = suggestDrivers(trip, drivers);
   const allActiveDrivers = drivers.filter(d => d.active);
@@ -58,9 +59,8 @@ export default function TripCard({ trip }) {
     timeWindow: pickupTimeLabel,
   }), [trip, pickupTimeLabel]);
 
-  const estimatedCost = selectedDriver
-    ? selectedDriver.price * trip.seatCount
-    : (suggestedDrivers[0]?.price || 0) * trip.seatCount;
+  const activePrice = customPrice || selectedDriver?.price || suggestedDrivers[0]?.price || 0;
+  const estimatedCost = activePrice * trip.seatCount;
 
   const handleConfirm = () => {
     if (!selectedDriverId) return;
@@ -130,13 +130,14 @@ export default function TripCard({ trip }) {
                   <th>CLIENT</th>
                   <th>DAYS HIRED</th>
                   <th>DUTY TIME</th>
+                  <th>RETURN TIME</th>
                 </tr>
               </thead>
               <tbody>
                 {trip.orders.map((order) => {
                   const timeStr = order.creationDate?.split(' ')[1]?.slice(0, 5);
-                  const pickTime = formatTimeTo12h(timeStr);
-                  const retTime = addHours(timeStr, 4);
+                  const dutyTime = timeStr ? formatTimeTo12h(timeStr) : 'TBD';
+                  const returnTime = order.returnTime ? formatTimeTo12h(order.returnTime) : 'TBD';
                   const transferDate = order.transferDate ? new Date(order.transferDate) : null;
                   const daysHired = transferDate
                     ? Math.max(0, Math.floor((new Date() - transferDate) / (1000 * 60 * 60 * 24)))
@@ -163,7 +164,10 @@ export default function TripCard({ trip }) {
                         <span className="days-hired-badge">{daysHired !== null ? `${daysHired} days` : '—'}</span>
                       </td>
                       <td>
-                        <span className="working-hours">{pickTime} - {retTime}</span>
+                        <span className="working-hours">{dutyTime}</span>
+                      </td>
+                      <td>
+                        <span className="working-hours">{returnTime}</span>
                       </td>
                     </tr>
                   );
@@ -184,7 +188,7 @@ export default function TripCard({ trip }) {
                     <button
                       key={d.id}
                       className={`suggested-driver-chip ${selectedDriverId === d.id ? 'selected' : ''}`}
-                      onClick={() => setSelectedDriverId(d.id)}
+                      onClick={() => { setSelectedDriverId(d.id); setCustomPrice(d.price); }}
                     >
                       <span className="sd-name">{d.name}</span>
                       <span className={`sd-reliability ${d.reliability.toLowerCase()}`}>{d.reliability}</span>
@@ -198,7 +202,11 @@ export default function TripCard({ trip }) {
                 <select
                   className="driver-select"
                   value={selectedDriverId}
-                  onChange={(e) => setSelectedDriverId(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedDriverId(e.target.value);
+                    const d = drivers.find(dr => dr.id === e.target.value);
+                    if (d) setCustomPrice(d.price);
+                  }}
                 >
                   <option value="">Select a driver...</option>
                   {suggestedDrivers.length > 0 && (
@@ -224,7 +232,7 @@ export default function TripCard({ trip }) {
 
               {/* Driver Message Bubble */}
               {selectedDriverId && (
-                <DriverMessageBubble trip={tripWithPickup} driver={selectedDriver} />
+                <DriverMessageBubble trip={tripWithPickup} driver={selectedDriver} customPrice={Number(customPrice) || null} />
               )}
 
               {/* Pickup Time + Confirm Button */}
@@ -248,6 +256,17 @@ export default function TripCard({ trip }) {
                       </option>
                     ))}
                   </select>
+                </div>
+                <div className="pickup-time-select-group">
+                  <label className="pickup-time-label">Price per seat (AED)</label>
+                  <input
+                    type="number"
+                    className="price-input"
+                    value={customPrice}
+                    onChange={(e) => setCustomPrice(e.target.value)}
+                    placeholder="e.g. 120"
+                    min="0"
+                  />
                 </div>
                 <button
                   className="confirm-btn"

@@ -338,6 +338,29 @@ function saveToStorage(key, value) {
   } catch { /* ignore */ }
 }
 
+// Reverse geocode cache to avoid repeated API calls
+const geoCache = {};
+
+async function reverseGeocode(lat, lon) {
+  if (!lat || !lon) return null;
+  const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
+  if (geoCache[key]) return geoCache[key];
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=14`,
+      { headers: { 'User-Agent': 'CarliftOps/1.0' } }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const addr = data.address || {};
+    const area = addr.neighbourhood || addr.suburb || addr.town || addr.city_district || addr.city || data.name || null;
+    if (area) geoCache[key] = area;
+    return area;
+  } catch {
+    return null;
+  }
+}
+
 export function AppProvider({ children }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -355,82 +378,6 @@ export function AppProvider({ children }) {
   useEffect(() => { saveToStorage('carlift_followup_data', followUpData); }, [followUpData]);
   useEffect(() => { saveToStorage('carlift_trip_assignments', tripAssignments); }, [tripAssignments]);
   useEffect(() => { saveToStorage('carlift_history_orders', historyOrders); }, [historyOrders]);
-
-  // Static fake examples with all details filled out
-  const STATIC_EXAMPLES = [
-    {
-      id: 'FAKE-001',
-      contractId: 'C-FAKE-001',
-      clientName: '[FAKE] Ahmed Al Mansouri',
-      clientLocation: 'Marina Walk Tower 5',
-      clientArea: 'Dubai Marina',
-      clientId: '999999',
-      housemaidName: '[FAKE] Maria Dela Cruz',
-      housemaidPhone: '+971 50 123 9876',
-      housemaidStatus: 'PENDING',
-      housemaidId: '99999',
-      maidLocation: 'Deira',
-      pickupArea: 'Deira',
-      dropoffArea: 'Dubai Marina',
-      creationDate: '2026-03-04 07:30:00',
-      transferDate: '2026-03-02 08:00:00',
-      typeOfTheContractLabel: 'Indefinite Maids.cc (live out)',
-      assignee: null,
-      pendingStatus: '',
-      urgent: false,
-      liveOut: true,
-      clientMobileNumber: '+971 55 888 7777',
-      clientWhatsappNumber: '+971 55 888 7777',
-    },
-    {
-      id: 'FAKE-002',
-      contractId: 'C-FAKE-002',
-      clientName: '[FAKE] Khalid Nasser',
-      clientLocation: 'JLT Cluster D Tower 3',
-      clientArea: 'JLT',
-      clientId: '999998',
-      housemaidName: '[FAKE] Rosa Mendez',
-      housemaidPhone: '+971 50 555 4321',
-      housemaidStatus: 'PENDING',
-      housemaidId: '99998',
-      maidLocation: 'Satwa',
-      pickupArea: 'Satwa',
-      dropoffArea: 'JLT',
-      creationDate: '2026-03-04 07:45:00',
-      transferDate: '2026-03-01 09:00:00',
-      typeOfTheContractLabel: 'Indefinite Maids.cc (live out)',
-      assignee: null,
-      pendingStatus: '',
-      urgent: false,
-      liveOut: true,
-      clientMobileNumber: '+971 55 777 6666',
-      clientWhatsappNumber: '+971 55 777 6666',
-    },
-    {
-      id: 'FAKE-003',
-      contractId: 'C-FAKE-003',
-      clientName: '[FAKE] Fatima Hassan',
-      clientLocation: 'JLT Cluster Y Tower 1',
-      clientArea: 'JLT',
-      clientId: '999997',
-      housemaidName: '[FAKE] Lina Reyes',
-      housemaidPhone: '+971 50 333 2222',
-      housemaidStatus: 'PENDING',
-      housemaidId: '99997',
-      maidLocation: 'Satwa',
-      pickupArea: 'Satwa',
-      dropoffArea: 'JLT',
-      creationDate: '2026-03-04 08:00:00',
-      transferDate: '2026-03-03 07:00:00',
-      typeOfTheContractLabel: 'Indefinite Maids.cc (live out)',
-      assignee: null,
-      pendingStatus: '',
-      urgent: false,
-      liveOut: true,
-      clientMobileNumber: '+971 55 444 3333',
-      clientWhatsappNumber: '+971 55 444 3333',
-    },
-  ];
 
   const mapApiOrder = (raw) => ({
     id: raw.id || String(raw.contractId),
@@ -455,7 +402,52 @@ export function AppProvider({ children }) {
     liveOut: raw.liveOut || false,
     clientMobileNumber: raw.clientMobileNumber && raw.clientMobileNumber !== '***' ? raw.clientMobileNumber : 'Phone: N/A',
     clientWhatsappNumber: raw.clientWhatsappNumber && raw.clientWhatsappNumber !== '***' ? raw.clientWhatsappNumber : 'Phone: N/A',
+    maidLat: raw.maidLat && raw.maidLat !== -1 ? raw.maidLat : null,
+    maidLong: raw.maidLong && raw.maidLong !== -1 ? raw.maidLong : null,
+    clientLat: raw.clientLat && raw.clientLat !== -1 ? raw.clientLat : null,
+    clientLong: raw.clientLong && raw.clientLong !== -1 ? raw.clientLong : null,
   });
+
+  const STATIC_EXAMPLES = [
+    {
+      id: 'FAKE-001',
+      contractId: 'FAKE-001',
+      clientName: '[FAKE] Sarah Al Maktoum',
+      clientLocation: 'JLT Cluster D',
+      clientArea: 'JLT',
+      housemaidName: '[FAKE] Maria Santos',
+      housemaidPhone: '+971 50 111 1111',
+      housemaidStatus: 'PENDING',
+      maidLocation: 'Satwa',
+      pickupArea: 'Satwa',
+      dropoffArea: 'JLT',
+      creationDate: '2026-03-04 07:00:00',
+      transferDate: '2026-03-01 08:00:00',
+      typeOfTheContractLabel: 'Satwa',
+      assignee: null,
+      pendingStatus: true,
+      maidLat: null, maidLong: null, clientLat: null, clientLong: null,
+    },
+    {
+      id: 'FAKE-002',
+      contractId: 'FAKE-002',
+      clientName: '[FAKE] Ahmed Bin Rashid',
+      clientLocation: 'JLT Cluster O',
+      clientArea: 'JLT',
+      housemaidName: '[FAKE] Priya Sharma',
+      housemaidPhone: '+971 50 222 2222',
+      housemaidStatus: 'PENDING',
+      maidLocation: 'Satwa',
+      pickupArea: 'Satwa',
+      dropoffArea: 'JLT',
+      creationDate: '2026-03-04 07:15:00',
+      transferDate: '2026-03-02 08:00:00',
+      typeOfTheContractLabel: 'Satwa',
+      assignee: null,
+      pendingStatus: true,
+      maidLat: null, maidLong: null, clientLat: null, clientLong: null,
+    },
+  ];
 
   const fetchOrders = useCallback(async () => {
     if (USE_MOCK) {
@@ -469,8 +461,31 @@ export function AppProvider({ children }) {
       if (!response.ok) throw new Error('Failed to fetch orders');
       const data = await response.json();
       const content = data.content || data || [];
-      const raw = Array.isArray(content) ? content : [];
-      setOrders([...STATIC_EXAMPLES, ...raw.map(mapApiOrder)]);
+      const raw = Array.isArray(content) ? content : (content && typeof content === 'object' ? [content] : []);
+      const mapped = raw.map(mapApiOrder);
+
+      // Reverse geocode coordinates to get area names (with 200ms delay between calls for rate limiting)
+      for (let i = 0; i < mapped.length; i++) {
+        const order = mapped[i];
+        if (order.maidLat && order.maidLong) {
+          const area = await reverseGeocode(order.maidLat, order.maidLong);
+          if (area) {
+            order.maidLocation = area;
+            order.pickupArea = area;
+          }
+        }
+        if (order.clientLat && order.clientLong) {
+          const area = await reverseGeocode(order.clientLat, order.clientLong);
+          if (area) {
+            order.clientLocation = area;
+            order.clientArea = area;
+            order.dropoffArea = area;
+          }
+        }
+        if (i < mapped.length - 1) await new Promise(r => setTimeout(r, 200));
+      }
+
+      setOrders([...STATIC_EXAMPLES, ...mapped]);
     } catch (err) {
       setError(err.message);
     } finally {
