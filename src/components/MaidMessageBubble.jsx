@@ -1,13 +1,14 @@
 import { useState } from 'react';
 
-export default function MaidMessageBubble({ order, driver, trip }) {
+export default function MaidMessageBubble({ order, driver, trip, customPrice }) {
   const [copied, setCopied] = useState(false);
 
   const driverName = driver?.name || 'TBD';
   const driverPhone = driver?.phone || 'TBD';
   const pickupTime = trip.timeWindow || 'TBD';
   const pickupAddress = trip.pickupLabel || 'TBD';
-  const price = driver?.price ? `${driver.price} AED` : 'TBD';
+  const priceValue = customPrice || driver?.price;
+  const price = priceValue ? `${priceValue} AED` : 'TBD';
 
   const maidName = order.housemaidName || 'Maid';
 

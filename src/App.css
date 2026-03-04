@@ -1819,6 +1819,46 @@
   gap: 16px;
 }
 
+.fu-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 4px 0;
+}
+
+.fu-section-header.pending {
+  color: #F59E0B;
+}
+
+.fu-section-header.done {
+  color: #16A34A;
+}
+
+.fu-section-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.fu-section-dot.pending {
+  background: #F59E0B;
+}
+
+.fu-section-dot.done {
+  background: #16A34A;
+}
+
+.fu-section-divider {
+  height: 1px;
+  background: #E2E8F0;
+  margin: 8px 0;
+}
+
 .fu-card {
   background: #fff;
   border: 1px solid #E2E8F0;

@@ -333,7 +333,7 @@ export default function TripCard({ trip }) {
                 const orderId = order.id || order.contractId;
                 return (
                   <div key={orderId} className="maid-message-row">
-                    <MaidMessageBubble order={order} driver={selectedDriver} trip={tripWithPickup} />
+                    <MaidMessageBubble order={order} driver={selectedDriver} trip={tripWithPickup} customPrice={Number(customPrice) || null} />
                     <button
                       className="message-sent-btn"
                       onClick={() => handleMessageSent(order)}

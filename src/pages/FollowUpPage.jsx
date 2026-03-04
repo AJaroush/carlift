@@ -54,6 +54,33 @@ export default function FollowUpPage() {
     );
   }, [sortedOrders, searchQuery]);
 
+  const { pending, done } = useMemo(() => {
+    const now = new Date();
+    const todayStrip = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    const getCurrentDay = (fo) => {
+      const confirmed = fo.confirmedAt ? new Date(fo.confirmedAt) : null;
+      if (!confirmed) return 1;
+      const confirmStrip = new Date(confirmed.getFullYear(), confirmed.getMonth(), confirmed.getDate());
+      return Math.max(1, Math.floor((todayStrip - confirmStrip) / (1000 * 60 * 60 * 24)) + 1);
+    };
+
+    const hasTodayData = (fo) => {
+      const day = getCurrentDay(fo);
+      const d = followUpData[fo.orderId]?.[day];
+      if (!d) return false;
+      return !!(d.arrivalStatus || d.actualTransport || d.delayed || d.reason || d.notes);
+    };
+
+    const p = [];
+    const d = [];
+    for (const fo of filteredOrders) {
+      if (hasTodayData(fo)) d.push(fo);
+      else p.push(fo);
+    }
+    return { pending: p, done: d };
+  }, [filteredOrders, followUpData]);
+
   if (followUpOrders.length === 0) {
     return (
       <>
@@ -81,6 +108,14 @@ export default function FollowUpPage() {
           <span className="wl-stat">
             <strong>{followUpOrders.length}</strong> maid{followUpOrders.length !== 1 ? 's' : ''}
           </span>
+          <span className="wl-stat-divider">|</span>
+          <span className="wl-stat" style={{ color: '#F59E0B' }}>
+            <strong>{pending.length}</strong> pending
+          </span>
+          <span className="wl-stat-divider">|</span>
+          <span className="wl-stat" style={{ color: '#16A34A' }}>
+            <strong>{done.length}</strong> done today
+          </span>
         </div>
       </div>
 
@@ -97,7 +132,35 @@ export default function FollowUpPage() {
       </div>
 
       <div className="fu-cards-list">
-        {filteredOrders.map((fo) => (
+        {pending.length > 0 && (
+          <div className="fu-section-header pending">
+            <span className="fu-section-dot pending" />
+            Needs Follow-Up Today ({pending.length})
+          </div>
+        )}
+        {pending.map((fo) => (
+          <FollowUpCard
+            key={fo.orderId}
+            fo={fo}
+            data={followUpData[fo.orderId] || {}}
+            onSave={(d) => updateFollowUp(fo.orderId, d)}
+            onMoveBack={() => moveBackToWaiting(fo.orderId)}
+            onPriorityChange={(p) => updateFollowUp(fo.orderId, { priority: p })}
+            onComplete={() => { if (window.confirm('Mark this maid as follow-up complete? She will be moved to History.')) completeFollowUp(fo.orderId); }}
+          />
+        ))}
+
+        {pending.length > 0 && done.length > 0 && (
+          <div className="fu-section-divider" />
+        )}
+
+        {done.length > 0 && (
+          <div className="fu-section-header done">
+            <span className="fu-section-dot done" />
+            Followed Up Today ({done.length})
+          </div>
+        )}
+        {done.map((fo) => (
           <FollowUpCard
             key={fo.orderId}
             fo={fo}
