@@ -1,11 +1,17 @@
 import { useState } from 'react';
 
-export default function MaidMessageBubble({ order, driver, trip, customPrice }) {
+export default function MaidMessageBubble({
+  order,
+  driver,
+  trip,
+  customPrice,
+  pickupTime,
+}) {
   const [copied, setCopied] = useState(false);
 
   const driverName = driver?.name || 'TBD';
   const driverPhone = driver?.phone || 'TBD';
-  const pickupTime = trip.timeWindow || 'TBD';
+  const pickupTimeLabel = pickupTime || trip.timeWindow || 'TBD';
   const pickupAddress = trip.pickupLabel || 'TBD';
   const priceValue = customPrice || driver?.price;
   const price = priceValue ? `${priceValue} AED` : 'TBD';
@@ -16,7 +22,7 @@ export default function MaidMessageBubble({ order, driver, trip, customPrice }) 
 Your carlift details for tomorrow:
 Driver: ${driverName}
 Driver Phone: ${driverPhone}
-Pickup Time: ${pickupTime}
+Pickup Time: ${pickupTimeLabel}
 Pickup Location: ${pickupAddress}
 Payment: ${price} (pay the driver directly)
 Please be ready on time. Contact the driver if you have any questions.`;
