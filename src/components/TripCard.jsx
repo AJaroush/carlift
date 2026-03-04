@@ -21,6 +21,22 @@ function generatePickupTimes() {
 
 const PICKUP_TIMES = generatePickupTimes();
 
+function generateAllTimes() {
+  const times = [];
+  for (let h = 0; h < 24; h++) {
+    for (let m = 0; m < 60; m += 30) {
+      const value = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      const period = h >= 12 ? 'PM' : 'AM';
+      const h12 = h % 12 || 12;
+      const label = `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`;
+      times.push({ value, label });
+    }
+  }
+  return times;
+}
+
+const ALL_TIMES = generateAllTimes();
+
 export default function TripCard({ trip }) {
   const { drivers, confirmOrder, confirmTripDriver, tripAssignments } = useApp();
 
@@ -42,6 +58,7 @@ export default function TripCard({ trip }) {
   const suggestedTime = suggestedPickupTime(trip);
   const [selectedPickupTime, setSelectedPickupTime] = useState(existingAssignment?.pickupTime || suggestedTime);
   const [customPrice, setCustomPrice] = useState(existingAssignment?.driverPrice || '');
+  const [orderTimes, setOrderTimes] = useState({});
 
   const suggestedDrivers = suggestDrivers(trip, drivers);
   const allActiveDrivers = drivers.filter(d => d.active);
@@ -135,15 +152,22 @@ export default function TripCard({ trip }) {
               </thead>
               <tbody>
                 {trip.orders.map((order) => {
-                  const timeStr = order.creationDate?.split(' ')[1]?.slice(0, 5);
-                  const dutyTime = timeStr ? formatTimeTo12h(timeStr) : 'TBD';
-                  const returnTime = order.returnTime ? formatTimeTo12h(order.returnTime) : 'TBD';
+                  const oid = order.id || order.contractId;
+                  const timeStr = order.creationDate?.split(' ')[1]?.slice(0, 5) || '';
+                  const defaultDuty = timeStr || '';
+                  const defaultReturn = order.returnTime || '';
+                  const dutyVal = orderTimes[oid]?.duty ?? defaultDuty;
+                  const returnVal = orderTimes[oid]?.ret ?? defaultReturn;
                   const transferDate = order.transferDate ? new Date(order.transferDate) : null;
                   const daysHired = transferDate
                     ? Math.max(0, Math.floor((new Date() - transferDate) / (1000 * 60 * 60 * 24)))
                     : null;
+                  const setTime = (field, val) => setOrderTimes(prev => ({
+                    ...prev,
+                    [oid]: { ...prev[oid], [field]: val },
+                  }));
                   return (
-                    <tr key={order.id || order.contractId}>
+                    <tr key={oid}>
                       <td>
                         <div className="order-maid">
                           <span className="maid-name-text">{order.housemaidName || '—'}</span>
@@ -164,10 +188,20 @@ export default function TripCard({ trip }) {
                         <span className="days-hired-badge">{daysHired !== null ? `${daysHired} days` : '—'}</span>
                       </td>
                       <td>
-                        <span className="working-hours">{dutyTime}</span>
+                        <select className="inline-time-select" value={dutyVal} onChange={(e) => setTime('duty', e.target.value)}>
+                          <option value="">TBD</option>
+                          {ALL_TIMES.map(t => (
+                            <option key={t.value} value={t.value}>{t.label}</option>
+                          ))}
+                        </select>
                       </td>
                       <td>
-                        <span className="working-hours">{returnTime}</span>
+                        <select className="inline-time-select" value={returnVal} onChange={(e) => setTime('ret', e.target.value)}>
+                          <option value="">TBD</option>
+                          {ALL_TIMES.map(t => (
+                            <option key={t.value} value={t.value}>{t.label}</option>
+                          ))}
+                        </select>
                       </td>
                     </tr>
                   );

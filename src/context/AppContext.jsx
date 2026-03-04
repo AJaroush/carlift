@@ -589,6 +589,10 @@ export function AppProvider({ children }) {
     setDrivers(prev => prev.filter(d => d.id !== id));
   }, []);
 
+  const addManualOrder = useCallback((order) => {
+    setOrders(prev => [...prev, order]);
+  }, []);
+
   return (
     <AppContext.Provider value={{
       orders,
@@ -610,6 +614,7 @@ export function AppProvider({ children }) {
       updateFollowUp,
       historyOrders,
       completeFollowUp,
+      addManualOrder,
     }}>
       {children}
     </AppContext.Provider>
