@@ -125,31 +125,31 @@ export default function CarliftsPage() {
               <div className="form-grid">
                 <div className="form-group">
                   <label>Driver Name</label>
-                  <input name="name" value={form.name} onChange={handleChange} placeholder="e.g. Ahmed Khan" required />
+                  <input name="name" value={form.name} onChange={handleChange} placeholder="e.g. Ahmed Khan" />
                 </div>
                 <div className="form-group">
                   <label>Phone Number</label>
-                  <input name="phone" value={form.phone} onChange={handleChange} placeholder="+971 50 000 0000" required />
+                  <input name="phone" value={form.phone} onChange={handleChange} placeholder="+971 50 000 0000" />
                 </div>
                 <div className="form-group">
                   <label>Vehicle</label>
-                  <input name="vehicle" value={form.vehicle} onChange={handleChange} placeholder="e.g. Toyota Hiace (14 Seater)" required />
+                  <input name="vehicle" value={form.vehicle} onChange={handleChange} placeholder="e.g. Toyota Hiace (14 Seater)" />
                 </div>
                 <div className="form-group">
                   <label>Plate Number</label>
-                  <input name="plate" value={form.plate} onChange={handleChange} placeholder="e.g. DXB A 12345" required />
+                  <input name="plate" value={form.plate} onChange={handleChange} placeholder="e.g. DXB A 12345" />
                 </div>
                 <div className="form-group">
                   <label>Pickup Area</label>
-                  <input name="pickupArea" value={form.pickupArea} onChange={handleChange} placeholder="e.g. JBR, Marina" required />
+                  <input name="pickupArea" value={form.pickupArea} onChange={handleChange} placeholder="e.g. JBR, Marina" />
                 </div>
                 <div className="form-group">
                   <label>Drop-off Area</label>
-                  <input name="dropArea" value={form.dropArea} onChange={handleChange} placeholder="e.g. JLT, Media City" required />
+                  <input name="dropArea" value={form.dropArea} onChange={handleChange} placeholder="e.g. JLT, Media City" />
                 </div>
                 <div className="form-group">
                   <label>Price (AED)</label>
-                  <input name="price" type="number" value={form.price} onChange={handleChange} placeholder="e.g. 120" required />
+                  <input name="price" type="number" value={form.price} onChange={handleChange} placeholder="e.g. 120" />
                 </div>
                 <div className="form-group">
                   <label>Reliability</label>
