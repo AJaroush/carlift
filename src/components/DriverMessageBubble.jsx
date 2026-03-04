@@ -11,10 +11,9 @@ export default function DriverMessageBubble({ trip, driver }) {
   const seatCount = trip.seatCount || trip.orders?.length || 1;
 
   const message = `Hi 🙂
-I'm looking for ${seatCount} seat${seatCount > 1 ? 's' : ''} on this route starting tomorrow:
-Pickup: ${pickupAddress} at ${pickupTime}
-Dropoff: ${dropoffAddress} and Return at: ${returnTime}
-Price: ${price}
+I'm looking for ${seatCount} seat${seatCount > 1 ? 's' : ''} on this route daily starting tomorrow:
+from ${pickupAddress} to ${dropoffAddress}
+Duty time: ${pickupTime} and Return: ${returnTime} Price: ${price} per each
 Please confirm if you are available.`;
 
   const handleCopy = async () => {

@@ -128,6 +128,7 @@ export default function TripCard({ trip }) {
                 <tr>
                   <th>MAID</th>
                   <th>CLIENT</th>
+                  <th>DAYS HIRED</th>
                   <th>DUTY TIME</th>
                 </tr>
               </thead>
@@ -136,6 +137,10 @@ export default function TripCard({ trip }) {
                   const timeStr = order.creationDate?.split(' ')[1]?.slice(0, 5);
                   const pickTime = formatTimeTo12h(timeStr);
                   const retTime = addHours(timeStr, 4);
+                  const transferDate = order.transferDate ? new Date(order.transferDate) : null;
+                  const daysHired = transferDate
+                    ? Math.max(0, Math.floor((new Date() - transferDate) / (1000 * 60 * 60 * 24)))
+                    : null;
                   return (
                     <tr key={order.id || order.contractId}>
                       <td>
@@ -153,6 +158,9 @@ export default function TripCard({ trip }) {
                           </Link>
                           <span className="client-loc">{order.clientLocation || order.clientArea || '—'}</span>
                         </div>
+                      </td>
+                      <td>
+                        <span className="days-hired-badge">{daysHired !== null ? `${daysHired} days` : '—'}</span>
                       </td>
                       <td>
                         <span className="working-hours">{pickTime} - {retTime}</span>

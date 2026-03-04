@@ -4,6 +4,7 @@ import WaitingListPage from './pages/WaitingListPage';
 import FollowUpPage from './pages/FollowUpPage';
 import CarliftsPage from './components/CarliftsPage';
 import ClientProfilePage from './pages/ClientProfilePage';
+import HistoryPage from './pages/HistoryPage';
 import './App.css';
 
 function App() {
@@ -15,6 +16,7 @@ function App() {
           <Route path="/" element={<Navigate to="/waiting-list" replace />} />
           <Route path="/waiting-list" element={<WaitingListPage />} />
           <Route path="/follow-up" element={<FollowUpPage />} />
+          <Route path="/history" element={<HistoryPage />} />
           <Route path="/carlifts" element={<CarliftsPage />} />
           <Route path="/client/:clientName" element={<ClientProfilePage />} />
         </Routes>

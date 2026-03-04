@@ -2,8 +2,8 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 
 const AppContext = createContext(null);
 
-const API_URL = '/api/webhook/371bc76a-2ff5-42a5-bd24-b408af2e51f4';
-const USE_MOCK = true; // Set to false when the real API is back up
+const API_URL = 'https://n8n.teljoy.io/webhook/b275943b-5eac-470b-a536-440821d67dd7';
+const USE_MOCK = false;
 
 const MOCK_ORDERS = [
   {
@@ -347,12 +347,115 @@ export function AppProvider({ children }) {
   const [followUpData, setFollowUpData] = useState(() => loadFromStorage('carlift_followup_data', {}));
   // Track confirmed driver assignments per order so TripCard state survives re-clustering
   const [tripAssignments, setTripAssignments] = useState(() => loadFromStorage('carlift_trip_assignments', {}));
+  const [historyOrders, setHistoryOrders] = useState(() => loadFromStorage('carlift_history_orders', []));
 
   // Persist to localStorage
   useEffect(() => { saveToStorage('carlift_drivers', drivers); }, [drivers]);
   useEffect(() => { saveToStorage('carlift_followup_orders', followUpOrders); }, [followUpOrders]);
   useEffect(() => { saveToStorage('carlift_followup_data', followUpData); }, [followUpData]);
   useEffect(() => { saveToStorage('carlift_trip_assignments', tripAssignments); }, [tripAssignments]);
+  useEffect(() => { saveToStorage('carlift_history_orders', historyOrders); }, [historyOrders]);
+
+  // Static fake examples with all details filled out
+  const STATIC_EXAMPLES = [
+    {
+      id: 'FAKE-001',
+      contractId: 'C-FAKE-001',
+      clientName: '[FAKE] Ahmed Al Mansouri',
+      clientLocation: 'Marina Walk Tower 5',
+      clientArea: 'Dubai Marina',
+      clientId: '999999',
+      housemaidName: '[FAKE] Maria Dela Cruz',
+      housemaidPhone: '+971 50 123 9876',
+      housemaidStatus: 'PENDING',
+      housemaidId: '99999',
+      maidLocation: 'Deira',
+      pickupArea: 'Deira',
+      dropoffArea: 'Dubai Marina',
+      creationDate: '2026-03-04 07:30:00',
+      transferDate: '2026-03-02 08:00:00',
+      typeOfTheContractLabel: 'Indefinite Maids.cc (live out)',
+      assignee: null,
+      pendingStatus: '',
+      urgent: false,
+      liveOut: true,
+      clientMobileNumber: '+971 55 888 7777',
+      clientWhatsappNumber: '+971 55 888 7777',
+    },
+    {
+      id: 'FAKE-002',
+      contractId: 'C-FAKE-002',
+      clientName: '[FAKE] Khalid Nasser',
+      clientLocation: 'JLT Cluster D Tower 3',
+      clientArea: 'JLT',
+      clientId: '999998',
+      housemaidName: '[FAKE] Rosa Mendez',
+      housemaidPhone: '+971 50 555 4321',
+      housemaidStatus: 'PENDING',
+      housemaidId: '99998',
+      maidLocation: 'Satwa',
+      pickupArea: 'Satwa',
+      dropoffArea: 'JLT',
+      creationDate: '2026-03-04 07:45:00',
+      transferDate: '2026-03-01 09:00:00',
+      typeOfTheContractLabel: 'Indefinite Maids.cc (live out)',
+      assignee: null,
+      pendingStatus: '',
+      urgent: false,
+      liveOut: true,
+      clientMobileNumber: '+971 55 777 6666',
+      clientWhatsappNumber: '+971 55 777 6666',
+    },
+    {
+      id: 'FAKE-003',
+      contractId: 'C-FAKE-003',
+      clientName: '[FAKE] Fatima Hassan',
+      clientLocation: 'JLT Cluster Y Tower 1',
+      clientArea: 'JLT',
+      clientId: '999997',
+      housemaidName: '[FAKE] Lina Reyes',
+      housemaidPhone: '+971 50 333 2222',
+      housemaidStatus: 'PENDING',
+      housemaidId: '99997',
+      maidLocation: 'Satwa',
+      pickupArea: 'Satwa',
+      dropoffArea: 'JLT',
+      creationDate: '2026-03-04 08:00:00',
+      transferDate: '2026-03-03 07:00:00',
+      typeOfTheContractLabel: 'Indefinite Maids.cc (live out)',
+      assignee: null,
+      pendingStatus: '',
+      urgent: false,
+      liveOut: true,
+      clientMobileNumber: '+971 55 444 3333',
+      clientWhatsappNumber: '+971 55 444 3333',
+    },
+  ];
+
+  const mapApiOrder = (raw) => ({
+    id: raw.id || String(raw.contractId),
+    contractId: raw.contractId ? String(raw.contractId) : raw.id,
+    clientName: raw.clientName || 'N/A',
+    clientLocation: 'Location N/A',
+    clientArea: 'N/A',
+    clientId: raw.clientId || '',
+    housemaidName: raw.housemaidName || 'N/A',
+    housemaidPhone: raw.housemaidPhoneNumber && raw.housemaidPhoneNumber !== '***' ? raw.housemaidPhoneNumber : 'Phone: N/A',
+    housemaidStatus: raw.housemaidStatus || '',
+    housemaidId: raw.housemaidId || '',
+    maidLocation: 'Location N/A',
+    pickupArea: 'N/A',
+    dropoffArea: 'N/A',
+    creationDate: raw.creationDate || '',
+    transferDate: raw.transferDate || '',
+    typeOfTheContractLabel: raw.typeOfTheContractLabel || '',
+    assignee: raw.assignee || null,
+    pendingStatus: raw.pendingStatus || '',
+    urgent: raw.urgent || false,
+    liveOut: raw.liveOut || false,
+    clientMobileNumber: raw.clientMobileNumber && raw.clientMobileNumber !== '***' ? raw.clientMobileNumber : 'Phone: N/A',
+    clientWhatsappNumber: raw.clientWhatsappNumber && raw.clientWhatsappNumber !== '***' ? raw.clientWhatsappNumber : 'Phone: N/A',
+  });
 
   const fetchOrders = useCallback(async () => {
     if (USE_MOCK) {
@@ -366,7 +469,8 @@ export function AppProvider({ children }) {
       if (!response.ok) throw new Error('Failed to fetch orders');
       const data = await response.json();
       const content = data.content || data || [];
-      setOrders(Array.isArray(content) ? content : []);
+      const raw = Array.isArray(content) ? content : [];
+      setOrders([...STATIC_EXAMPLES, ...raw.map(mapApiOrder)]);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -435,6 +539,25 @@ export function AppProvider({ children }) {
     }));
   }, []);
 
+  const completeFollowUp = useCallback((orderId) => {
+    const fo = followUpOrders.find(o => o.orderId === orderId);
+    if (!fo) return;
+    setHistoryOrders(prev => {
+      if (prev.some(h => h.orderId === orderId)) return prev;
+      return [...prev, {
+        ...fo,
+        followUpData: followUpData[orderId] || {},
+        completedAt: new Date().toISOString(),
+      }];
+    });
+    setFollowUpOrders(prev => prev.filter(o => o.orderId !== orderId));
+    setFollowUpData(prev => {
+      const next = { ...prev };
+      delete next[orderId];
+      return next;
+    });
+  }, [followUpOrders, followUpData]);
+
   const addDriver = useCallback((driver) => {
     setDrivers(prev => [...prev, driver]);
   }, []);
@@ -470,6 +593,8 @@ export function AppProvider({ children }) {
       moveBackToWaiting,
       followUpData,
       updateFollowUp,
+      historyOrders,
+      completeFollowUp,
     }}>
       {children}
     </AppContext.Provider>

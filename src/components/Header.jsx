@@ -15,6 +15,9 @@ export default function Header() {
           <NavLink to="/follow-up" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
             Follow-Up
           </NavLink>
+          <NavLink to="/history" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+            History
+          </NavLink>
           <NavLink to="/carlifts" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
             Carlifts
           </NavLink>

@@ -11,14 +11,35 @@ const DAYS = [1, 2, 3];
 const EMPTY_DAY = { arrivalStatus: '', actualTransport: '', delayed: false, reason: '', notes: '' };
 
 export default function FollowUpPage() {
-  const { followUpOrders, followUpData, updateFollowUp, moveBackToWaiting } = useApp();
+  const { followUpOrders, followUpData, updateFollowUp, moveBackToWaiting, completeFollowUp } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
 
   const sortedOrders = useMemo(() => {
+    const now = new Date();
+    const todayStrip = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    const getCurrentDay = (fo) => {
+      const confirmed = fo.confirmedAt ? new Date(fo.confirmedAt) : null;
+      if (!confirmed) return 1;
+      const confirmStrip = new Date(confirmed.getFullYear(), confirmed.getMonth(), confirmed.getDate());
+      return Math.max(1, Math.floor((todayStrip - confirmStrip) / (1000 * 60 * 60 * 24)) + 1);
+    };
+
+    const hasDayData = (fo) => {
+      const d = followUpData[fo.orderId]?.[getCurrentDay(fo)];
+      if (!d) return false;
+      return !!(d.arrivalStatus || d.actualTransport || d.delayed || d.reason || d.notes);
+    };
+
     return [...followUpOrders].sort((a, b) => {
+      // Priority first
       const pa = PRIORITY_ORDER[followUpData[a.orderId]?.priority || 'Normal'] ?? 2;
       const pb = PRIORITY_ORDER[followUpData[b.orderId]?.priority || 'Normal'] ?? 2;
-      return pa - pb;
+      if (pa !== pb) return pa - pb;
+      // Within same priority: unfollowed-up first, followed-up last
+      const da = hasDayData(a) ? 1 : 0;
+      const db = hasDayData(b) ? 1 : 0;
+      return da - db;
     });
   }, [followUpOrders, followUpData]);
 
@@ -84,6 +105,7 @@ export default function FollowUpPage() {
             onSave={(d) => updateFollowUp(fo.orderId, d)}
             onMoveBack={() => moveBackToWaiting(fo.orderId)}
             onPriorityChange={(p) => updateFollowUp(fo.orderId, { priority: p })}
+            onComplete={() => { if (window.confirm('Mark this maid as follow-up complete? She will be moved to History.')) completeFollowUp(fo.orderId); }}
           />
         ))}
       </div>
@@ -91,7 +113,7 @@ export default function FollowUpPage() {
   );
 }
 
-function FollowUpCard({ fo, data, onSave, onMoveBack, onPriorityChange }) {
+function FollowUpCard({ fo, data, onSave, onMoveBack, onPriorityChange, onComplete }) {
   const order = fo.order;
   const now = new Date();
 
@@ -205,6 +227,12 @@ function FollowUpCard({ fo, data, onSave, onMoveBack, onPriorityChange }) {
                 <path d="M7 9.5L3.5 6 7 2.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
               Move Back
+            </button>
+            <button className="fu-complete-btn" onClick={onComplete}>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M10 3L4.5 8.5 2 6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Follow-Up Complete
             </button>
           </div>
         </div>

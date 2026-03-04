@@ -1428,6 +1428,16 @@
   color: #475569;
 }
 
+.days-hired-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  background: #F1F5F9;
+  color: #475569;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .pickup-time-badge {
   display: inline-flex;
   padding: 3px 10px;
@@ -2082,6 +2092,115 @@
 }
 
 .move-back-btn:hover {
+  background: #FEF2F2;
+  border-color: #DC2626;
+}
+
+.fu-complete-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: #F0FDF4;
+  border: 1px solid #86EFAC;
+  border-radius: 8px;
+  color: #16A34A;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.fu-complete-btn:hover {
+  background: #DCFCE7;
+  border-color: #16A34A;
+}
+
+/* ========================================
+   HISTORY PAGE
+   ======================================== */
+
+.history-card {
+  opacity: 1;
+}
+
+.history-completed-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  background: #F0FDF4;
+  color: #16A34A;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.history-days {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 1px solid #F1F5F9;
+}
+
+.history-day-block {
+  background: #F8FAFC;
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.history-day-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #3B82F6;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.history-day-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+
+.history-day-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.history-field-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #94A3B8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.history-field-value {
+  font-size: 13px;
+  color: #1E293B;
+  font-weight: 500;
+}
+
+.delete-driver-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  background: #fff;
+  border: 1px solid #FCA5A5;
+  border-radius: 6px;
+  color: #DC2626;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.delete-driver-btn:hover {
   background: #FEF2F2;
   border-color: #DC2626;
 }
