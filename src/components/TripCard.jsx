@@ -37,6 +37,12 @@ function generateAllTimes() {
 
 const ALL_TIMES = generateAllTimes();
 
+function minutesToTime(mins) {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
 export default function TripCard({ trip }) {
   const { drivers, confirmOrder, confirmTripDriver, tripAssignments } = useApp();
 
@@ -59,6 +65,43 @@ export default function TripCard({ trip }) {
   const [selectedPickupTime, setSelectedPickupTime] = useState(existingAssignment?.pickupTime || suggestedTime);
   const [customPrice, setCustomPrice] = useState(existingAssignment?.driverPrice || '');
   const [orderTimes, setOrderTimes] = useState({});
+
+  const { dutyLabel, returnLabel } = useMemo(() => {
+    const dutyMinutes = [];
+    const returnMinutes = [];
+
+    trip.orders.forEach((order) => {
+      const oid = order.id || order.contractId;
+      const baseDuty = order.creationDate?.split(' ')[1]?.slice(0, 5) || '';
+      const baseReturn = order.returnTime || '';
+      const dutyVal = orderTimes[oid]?.duty || baseDuty;
+      const retVal = orderTimes[oid]?.ret || baseReturn;
+
+      if (dutyVal) {
+        const [h, m] = dutyVal.split(':').map(Number);
+        dutyMinutes.push(h * 60 + m);
+      }
+      if (retVal) {
+        const [h, m] = retVal.split(':').map(Number);
+        returnMinutes.push(h * 60 + m);
+      }
+    });
+
+    let dutyLabel = '';
+    let returnLabel = '';
+
+    if (dutyMinutes.length > 0) {
+      const mins = Math.min(...dutyMinutes);
+      dutyLabel = formatTimeTo12h(minutesToTime(mins));
+    }
+
+    if (returnMinutes.length > 0) {
+      const mins = Math.max(...returnMinutes);
+      returnLabel = formatTimeTo12h(minutesToTime(mins));
+    }
+
+    return { dutyLabel, returnLabel };
+  }, [orderTimes, trip.orders]);
 
   const suggestedDrivers = suggestDrivers(trip, drivers);
   const allActiveDrivers = drivers.filter(d => d.active);
@@ -266,7 +309,13 @@ export default function TripCard({ trip }) {
 
               {/* Driver Message Bubble */}
               {selectedDriverId && (
-                <DriverMessageBubble trip={tripWithPickup} driver={selectedDriver} customPrice={Number(customPrice) || null} />
+            <DriverMessageBubble
+              trip={tripWithPickup}
+              driver={selectedDriver}
+              customPrice={Number(customPrice) || null}
+              dutyTime={dutyLabel}
+              returnTime={returnLabel}
+            />
               )}
 
               {/* Pickup Time + Confirm Button */}

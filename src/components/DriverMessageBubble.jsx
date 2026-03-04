@@ -1,12 +1,18 @@
 import { useState } from 'react';
 
-export default function DriverMessageBubble({ trip, driver, customPrice }) {
+export default function DriverMessageBubble({
+  trip,
+  driver,
+  customPrice,
+  dutyTime,
+  returnTime,
+}) {
   const [copied, setCopied] = useState(false);
 
   const pickupAddress = trip.pickupLabel || 'TBD';
   const dropoffAddress = trip.dropoffLabel || 'TBD';
-  const pickupTime = trip.timeWindow || 'TBD';
-  const returnTime = trip.returnTime || 'TBD';
+  const dutyTimeLabel = dutyTime || trip.timeWindow || 'TBD';
+  const returnTimeLabel = returnTime || trip.returnTime || 'TBD';
   const priceValue = customPrice || driver?.price;
   const price = priceValue ? `${priceValue} AED` : 'TBD';
   const seatCount = trip.seatCount || trip.orders?.length || 1;
@@ -14,7 +20,7 @@ export default function DriverMessageBubble({ trip, driver, customPrice }) {
   const message = `Hi 🙂
 I'm looking for ${seatCount} seat${seatCount > 1 ? 's' : ''} on this route daily starting tomorrow:
 from ${pickupAddress} to ${dropoffAddress}
-Duty time: ${pickupTime} and Return: ${returnTime} Price: ${price} per each
+Duty time: ${dutyTimeLabel} and Return: ${returnTimeLabel} Price: ${price} per each
 Please confirm if you are available.`;
 
   const handleCopy = async () => {
