@@ -80,19 +80,26 @@ function dropoffsNear(orderA, orderB) {
 function extractAreaName(address) {
   if (!address || address === 'N/A' || address === 'Location N/A') return 'N/A';
 
-  // Known Dubai area keywords — longer names first to match more specific areas
+  // Known Dubai/UAE area keywords — longer names first to match more specific areas
   const knownAreas = [
-    'Arabian Ranches', 'Palm Jumeirah', 'Business Bay', 'Silicon Oasis', 'Sports City',
-    'Motor City', 'International City', 'Discovery Gardens', 'Dubai Hills', 'Dubai Marina',
-    'Barsha Heights', 'Emirates Hills', 'Damac Hills', 'Town Square', 'Tilal Al Ghaf',
-    'Nad Al Sheba', 'Yas Island', 'Khalifa City', 'Dubai Land', 'Dubailand',
-    'Bur Dubai', 'Al Barsha', 'Al Quoz', 'Al Nahda', 'Al Jafiliya', 'Al Rigga',
-    'Al Mankhool', 'Al Garhoud', 'Al Muhaisnah', 'Al Qusais', 'Al Safa', 'Al Wasl',
-    'Al Satwa', 'Al Furjan', 'Al Reef', 'Abu Hail', 'Umm Suqeim', 'Oud Metha',
-    'JLT', 'JVC', 'JBR', 'DIFC', 'Downtown', 'Marina', 'Satwa', 'Deira',
-    'Karama', 'Mirdif', 'Rashidiya', 'Jumeirah', 'Arjan', 'Tecom',
-    'Greens', 'Views', 'Springs', 'Meadows', 'Lakes', 'Remraam', 'Mudon',
-    'Villanova', 'Warsan', 'Saadiyat',
+    // Multi-word areas first (longer names matched before shorter)
+    'Victory Heights', 'Arabian Ranches', 'Palm Jumeirah', 'Business Bay', 'Silicon Oasis',
+    'Sports City', 'Motor City', 'International City', 'Discovery Gardens', 'Dubai Hills',
+    'Dubai Marina', 'Dubai Downtown', 'Barsha Heights', 'Emirates Hills', 'Damac Hills',
+    'Town Square', 'Tilal Al Ghaf', 'Nad Al Sheba', 'Yas Island', 'Khalifa City',
+    'Dubai Land', 'Dubailand', 'Creek Beach', 'Al Raha Beach', 'Wadi Al Safa',
+    'Bur Dubai', 'Al Barsha', 'Al Quoz', 'Al Nahda', 'Al Jafiliya', 'Al Jaffiliya',
+    'Al Rigga', 'Al Mankhool', 'Al Garhoud', 'Al Muhaisnah', 'Al Qusais', 'Al Safa',
+    'Al Wasl', 'Al Satwa', 'Al Furjan', 'Al Reef', 'Al Murar', 'Al Danah', 'Al Bada',
+    'Al Muneera', 'Al Rahba', 'Al Ranim',
+    'Abu Hail', 'Umm Suqeim', 'Umm Ramool', 'Um Ramool', 'Oud Metha',
+    'Yas Aspens', 'Yas Acres',
+    // Short/single-word areas
+    'JLT', 'JVC', 'JBR', 'DIFC', 'Downtown', 'Marina', 'Satwa', 'Deira', 'Naif',
+    'Karama', 'Mirdif', 'Rashidiya', 'Jumeirah', 'Jumeriah', 'Arjan', 'Tecom',
+    'Greens', 'Views', 'Springs', 'Meadows', 'Lakes', 'Remraam', 'Mudon', 'Layan',
+    'Villanova', 'Warsan', 'Saadiyat', 'Sidra', 'Mulberry', 'Rockwood', 'Trixis',
+    'Naseem', 'Anantara',
   ];
 
   const upper = address.toUpperCase();

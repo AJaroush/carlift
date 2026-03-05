@@ -379,18 +379,58 @@ export function AppProvider({ children }) {
   useEffect(() => { saveToStorage('carlift_trip_assignments', tripAssignments); }, [tripAssignments]);
   useEffect(() => { saveToStorage('carlift_history_orders', historyOrders); }, [historyOrders]);
 
+  // Compound area names that start with a city name — must NOT strip the city word
+  const COMPOUND_AREAS = [
+    'Dubai Hills', 'Dubai Marina', 'Dubai Downtown', 'Downtown Dubai',
+    'Dubai Land', 'Dubailand', 'Dubai Silicon Oasis', 'Dubai Sports City',
+    'Dubai Festival City', 'Abu Dhabi Gate', 'Abu Dhabi Mall',
+  ];
+
   const cleanAddress = (addr) => {
     if (!addr) return null;
     let clean = addr
-      .replace(/\s*\(lat\s*[-\d.]+,\s*lng\s*[-\d.]+\)\s*/gi, '') // remove (lat ..., lng ...)
-      .replace(/\b\w{4}\+\w{2,4}\b/g, '')                         // remove plus codes like 67PH+FQR
-      .replace(/\s*-\s*United Arab Emirates\b/gi, '')               // remove country
-      .replace(/\s*-\s*Dubai\b/gi, '')                              // remove city suffix
-      .replace(/^\s*Dubai\s*[-,]?\s*/i, '')                         // remove leading "Dubai -"
+      .replace(/https?:\/\/\S+/gi, '')                              // remove URLs
+      .replace(/\s*\(.*?\)\s*/g, '')                                // remove anything in parentheses
+      .replace(/\(Google Maps pin:.*$/gi, '')                        // remove Google Maps pin suffix
+      .replace(/\d+°\d+'\d+\.?\d*"[NS]\s*\d+°\d+'\d+\.?\d*"[EW]/g, '') // DMS coords
+      .replace(/\b\d{1,3}\.\d{4,},?\s*\d{1,3}\.\d{4,}\b/g, '')    // decimal coords like 25.242861, 55.284083
+      .replace(/\b\w{4}\+\w{2,5}\b/gi, '')                         // plus codes like 67PH+FQR
+      .replace(/\b\d{4}\s+\w{2,3}\b/g, '')                         // codes like "7886 MP"
+      .replace(/\blocation\s*pin\s*[-:,]?\s*(\d+\.\d+,?\s*\d+\.\d+)?/gi, '') // "location pin 25.xx, 55.xx" or leftover "location pin"
+      .replace(/United Arab Emirates/gi, '')
+      .replace(/\n/g, ' ')                                          // newlines to spaces
       .replace(/\s{2,}/g, ' ')                                      // collapse spaces
-      .replace(/^[\s,-]+|[\s,-]+$/g, '')                            // trim delimiters
       .trim();
-    return clean || null;
+
+    // Protect compound area names by replacing them with placeholders
+    const placeholders = {};
+    COMPOUND_AREAS.forEach((area, i) => {
+      const re = new RegExp(area.replace(/\s+/g, '\\s+'), 'gi');
+      if (re.test(clean)) {
+        clean = clean.replace(re, `__AREA${i}__`);
+        placeholders[`__AREA${i}__`] = area;
+      }
+    });
+
+    // Now safely remove standalone city names
+    clean = clean
+      .replace(/\bDubai\b/gi, '')
+      .replace(/\bAbu Dhabi\b/gi, '')
+      .replace(/\bSharjah\b/gi, '');
+
+    // Restore compound area names
+    for (const [ph, area] of Object.entries(placeholders)) {
+      clean = clean.replace(new RegExp(ph, 'g'), area);
+    }
+
+    clean = clean
+      .replace(/\s{2,}/g, ' ')
+      .replace(/^[\s,.\-]+|[\s,.\-]+$/g, '')
+      .trim();
+
+    // If all that's left is too short or just numbers, return null
+    if (!clean || clean.length < 3 || /^\d+$/.test(clean)) return null;
+    return clean;
   };
 
   const mapApiOrder = (raw) => {
@@ -488,24 +528,30 @@ export function AppProvider({ children }) {
 
       // Reverse geocode only when API didn't provide usable addresses
       const needsGeo = (area) => !area || area === 'N/A' || area === 'Location N/A';
-      for (let i = 0; i < mapped.length; i++) {
-        const order = mapped[i];
+      const geoTasks = [];
+      for (const order of mapped) {
         if (needsGeo(order.pickupArea) && order.maidLat && order.maidLong) {
-          const area = await reverseGeocode(order.maidLat, order.maidLong);
-          if (area) {
-            order.maidLocation = area;
-            order.pickupArea = area;
-          }
+          geoTasks.push({ order, field: 'pickup', lat: order.maidLat, lon: order.maidLong });
         }
         if (needsGeo(order.dropoffArea) && order.clientLat && order.clientLong) {
-          const area = await reverseGeocode(order.clientLat, order.clientLong);
-          if (area) {
-            order.clientLocation = area;
-            order.clientArea = area;
-            order.dropoffArea = area;
+          geoTasks.push({ order, field: 'dropoff', lat: order.clientLat, lon: order.clientLong });
+        }
+      }
+      // Nominatim rate limit: 1 req/sec — process sequentially with 1.1s delay
+      for (let i = 0; i < geoTasks.length; i++) {
+        const task = geoTasks[i];
+        const area = await reverseGeocode(task.lat, task.lon);
+        if (area) {
+          if (task.field === 'pickup') {
+            task.order.maidLocation = area;
+            task.order.pickupArea = area;
+          } else {
+            task.order.clientLocation = area;
+            task.order.clientArea = area;
+            task.order.dropoffArea = area;
           }
         }
-        if (i < mapped.length - 1) await new Promise(r => setTimeout(r, 200));
+        if (i < geoTasks.length - 1) await new Promise(r => setTimeout(r, 1100));
       }
 
       setOrders([...STATIC_EXAMPLES, ...mapped]);
