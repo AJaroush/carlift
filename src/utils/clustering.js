@@ -71,6 +71,58 @@ function dropoffsNear(orderA, orderB) {
   return areasMatch(getDropoffArea(orderA), getDropoffArea(orderB));
 }
 
+/**
+ * Extract a short area name from a full address string.
+ * e.g. "2 27A St - Al Jafiliya - Dubai - United Arab Emirates" → "Al Jafiliya"
+ * e.g. "Ashton Park Residences by Mirfa, JVC, Villa B05" → "JVC"
+ * e.g. "Arjan, Beverley Boulevard, 313" → "Arjan"
+ */
+function extractAreaName(address) {
+  if (!address || address === 'N/A' || address === 'Location N/A') return 'N/A';
+
+  // Known Dubai area keywords — longer names first to match more specific areas
+  const knownAreas = [
+    'Arabian Ranches', 'Palm Jumeirah', 'Business Bay', 'Silicon Oasis', 'Sports City',
+    'Motor City', 'International City', 'Discovery Gardens', 'Dubai Hills', 'Dubai Marina',
+    'Barsha Heights', 'Emirates Hills', 'Damac Hills', 'Town Square', 'Tilal Al Ghaf',
+    'Nad Al Sheba', 'Yas Island', 'Khalifa City', 'Dubai Land', 'Dubailand',
+    'Bur Dubai', 'Al Barsha', 'Al Quoz', 'Al Nahda', 'Al Jafiliya', 'Al Rigga',
+    'Al Mankhool', 'Al Garhoud', 'Al Muhaisnah', 'Al Qusais', 'Al Safa', 'Al Wasl',
+    'Al Satwa', 'Al Furjan', 'Al Reef', 'Abu Hail', 'Umm Suqeim', 'Oud Metha',
+    'JLT', 'JVC', 'JBR', 'DIFC', 'Downtown', 'Marina', 'Satwa', 'Deira',
+    'Karama', 'Mirdif', 'Rashidiya', 'Jumeirah', 'Arjan', 'Tecom',
+    'Greens', 'Views', 'Springs', 'Meadows', 'Lakes', 'Remraam', 'Mudon',
+    'Villanova', 'Warsan', 'Saadiyat',
+  ];
+
+  const upper = address.toUpperCase();
+  for (const area of knownAreas) {
+    if (upper.includes(area.toUpperCase())) return area;
+  }
+
+  // Clean plus codes and generic terms before splitting
+  let cleaned = address
+    .replace(/\b\w{4}\+\w{2,4}\b/g, '')
+    .replace(/\b(Dubai|United Arab Emirates|UAE)\b/gi, '')
+    .trim();
+
+  // Fallback: split by common delimiters and pick the most meaningful segment
+  const parts = cleaned.split(/\s*[-,]\s*/).map(s => s.trim()).filter(Boolean);
+  const filtered = parts.filter(p =>
+    !p.match(/^(flat|apartment|villa|building|tower|floor|road|street|st)\b/i) &&
+    !p.match(/^\d+$/) &&
+    p.length > 1
+  );
+
+  if (filtered.length > 0) {
+    // Prefer a part that looks like an area name (starts with letter, reasonable length)
+    const areaPart = filtered.find(p => p.match(/^[A-Za-z]/) && p.length >= 3 && p.length <= 30);
+    return areaPart || filtered[0];
+  }
+
+  return parts[0] || address;
+}
+
 export function clusterOrders(orders) {
   const clusters = [];
 
@@ -106,14 +158,18 @@ export function clusterOrders(orders) {
   }
 
   return clusters.map((cluster) => {
-    const pickupLabel = cluster.orders[0].pickupArea
+    const fullPickup = cluster.orders[0].pickupArea
       || cluster.orders[0].maidLocation
       || cluster.orders[0].typeOfTheContractLabel
       || 'Unknown Pickup';
-    const dropoffLabel = cluster.orders[0].dropoffArea
+    const fullDropoff = cluster.orders[0].dropoffArea
       || cluster.orders[0].clientLocation
       || cluster.orders[0].clientArea
       || 'Unknown Dropoff';
+
+    // Short area name for route label (header), full address for inside card
+    const shortPickup = extractAreaName(fullPickup);
+    const shortDropoff = extractAreaName(fullDropoff);
 
     const timeWindow = formatTimeWindow(cluster.avgTime);
 
@@ -128,9 +184,9 @@ export function clusterOrders(orders) {
 
     return {
       id: `cluster-${stableId}`,
-      routeLabel: `${pickupLabel} → ${dropoffLabel}`,
-      pickupLabel,
-      dropoffLabel,
+      routeLabel: `${shortPickup} → ${shortDropoff}`,
+      pickupLabel: fullPickup,
+      dropoffLabel: fullDropoff,
       timeWindow,
       avgTime: cluster.avgTime,
       earliestTime,

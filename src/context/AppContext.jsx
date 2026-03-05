@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 
 const AppContext = createContext(null);
 
@@ -379,20 +379,37 @@ export function AppProvider({ children }) {
   useEffect(() => { saveToStorage('carlift_trip_assignments', tripAssignments); }, [tripAssignments]);
   useEffect(() => { saveToStorage('carlift_history_orders', historyOrders); }, [historyOrders]);
 
-  const mapApiOrder = (raw) => ({
+  const cleanAddress = (addr) => {
+    if (!addr) return null;
+    let clean = addr
+      .replace(/\s*\(lat\s*[-\d.]+,\s*lng\s*[-\d.]+\)\s*/gi, '') // remove (lat ..., lng ...)
+      .replace(/\b\w{4}\+\w{2,4}\b/g, '')                         // remove plus codes like 67PH+FQR
+      .replace(/\s*-\s*United Arab Emirates\b/gi, '')               // remove country
+      .replace(/\s*-\s*Dubai\b/gi, '')                              // remove city suffix
+      .replace(/^\s*Dubai\s*[-,]?\s*/i, '')                         // remove leading "Dubai -"
+      .replace(/\s{2,}/g, ' ')                                      // collapse spaces
+      .replace(/^[\s,-]+|[\s,-]+$/g, '')                            // trim delimiters
+      .trim();
+    return clean || null;
+  };
+
+  const mapApiOrder = (raw) => {
+    const maidAddr = cleanAddress(raw.maidAddress);
+    const clientAddr = cleanAddress(raw.ClientAddress);
+    return {
     id: raw.id || String(raw.contractId),
     contractId: raw.contractId ? String(raw.contractId) : raw.id,
     clientName: raw.clientName || 'N/A',
-    clientLocation: 'Location N/A',
-    clientArea: 'N/A',
+    clientLocation: clientAddr || 'Location N/A',
+    clientArea: clientAddr || 'N/A',
     clientId: raw.clientId || '',
     housemaidName: raw.housemaidName || 'N/A',
     housemaidPhone: raw.housemaidPhoneNumber && raw.housemaidPhoneNumber !== '***' ? raw.housemaidPhoneNumber : 'Phone: N/A',
     housemaidStatus: raw.housemaidStatus || '',
     housemaidId: raw.housemaidId || '',
-    maidLocation: 'Location N/A',
-    pickupArea: 'N/A',
-    dropoffArea: 'N/A',
+    maidLocation: maidAddr || 'Location N/A',
+    pickupArea: maidAddr || 'N/A',
+    dropoffArea: clientAddr || 'N/A',
     creationDate: raw.creationDate || '',
     transferDate: raw.transferDate || '',
     typeOfTheContractLabel: raw.typeOfTheContractLabel || '',
@@ -406,7 +423,8 @@ export function AppProvider({ children }) {
     maidLong: raw.maidLong && raw.maidLong !== -1 ? raw.maidLong : null,
     clientLat: raw.clientLat && raw.clientLat !== -1 ? raw.clientLat : null,
     clientLong: raw.clientLong && raw.clientLong !== -1 ? raw.clientLong : null,
-  });
+  };
+  };
 
   const STATIC_EXAMPLES = [
     {
@@ -449,6 +467,8 @@ export function AppProvider({ children }) {
     },
   ];
 
+  const hasFetchedOnce = useRef(false);
+
   const fetchOrders = useCallback(async () => {
     if (USE_MOCK) {
       setOrders(MOCK_ORDERS);
@@ -456,25 +476,28 @@ export function AppProvider({ children }) {
       return;
     }
     try {
-      setLoading(true);
+      if (!hasFetchedOnce.current) setLoading(true);
       const response = await fetch(API_URL);
       if (!response.ok) throw new Error('Failed to fetch orders');
       const data = await response.json();
-      const content = data.content || data || [];
+      const content = data.data || data.content || data || [];
       const raw = Array.isArray(content) ? content : (content && typeof content === 'object' ? [content] : []);
-      const mapped = raw.map(mapApiOrder);
+      // Filter out orders without a maid assigned
+      const withMaid = raw.filter(r => r.housemaidName && r.housemaidName.trim());
+      const mapped = withMaid.map(mapApiOrder);
 
-      // Reverse geocode coordinates to get area names (with 200ms delay between calls for rate limiting)
+      // Reverse geocode only when API didn't provide usable addresses
+      const needsGeo = (area) => !area || area === 'N/A' || area === 'Location N/A';
       for (let i = 0; i < mapped.length; i++) {
         const order = mapped[i];
-        if (order.maidLat && order.maidLong) {
+        if (needsGeo(order.pickupArea) && order.maidLat && order.maidLong) {
           const area = await reverseGeocode(order.maidLat, order.maidLong);
           if (area) {
             order.maidLocation = area;
             order.pickupArea = area;
           }
         }
-        if (order.clientLat && order.clientLong) {
+        if (needsGeo(order.dropoffArea) && order.clientLat && order.clientLong) {
           const area = await reverseGeocode(order.clientLat, order.clientLong);
           if (area) {
             order.clientLocation = area;
@@ -490,10 +513,15 @@ export function AppProvider({ children }) {
       setError(err.message);
     } finally {
       setLoading(false);
+      hasFetchedOnce.current = true;
     }
   }, []);
 
-  useEffect(() => { fetchOrders(); }, [fetchOrders]);
+  useEffect(() => {
+    fetchOrders();
+    const interval = setInterval(fetchOrders, 10000);
+    return () => clearInterval(interval);
+  }, [fetchOrders]);
 
   // Filter out orders that are already in follow-up
   const followUpOrderIds = new Set(followUpOrders.map(o => o.orderId));

@@ -201,10 +201,7 @@ export default function TripCard({ trip }) {
                   const defaultReturn = order.returnTime || '';
                   const dutyVal = orderTimes[oid]?.duty ?? defaultDuty;
                   const returnVal = orderTimes[oid]?.ret ?? defaultReturn;
-                  const transferDate = order.transferDate ? new Date(order.transferDate) : null;
-                  const daysHired = transferDate
-                    ? Math.max(0, Math.floor((new Date() - transferDate) / (1000 * 60 * 60 * 24)))
-                    : null;
+                  const daysHired = 0;
                   const setTime = (field, val) => setOrderTimes(prev => ({
                     ...prev,
                     [oid]: { ...prev[oid], [field]: val },
@@ -228,7 +225,7 @@ export default function TripCard({ trip }) {
                         </div>
                       </td>
                       <td>
-                        <span className="days-hired-badge">{daysHired !== null ? `${daysHired} days` : '—'}</span>
+                        <span className="days-hired-badge">{daysHired} days</span>
                       </td>
                       <td>
                         <select className="inline-time-select" value={dutyVal} onChange={(e) => setTime('duty', e.target.value)}>
