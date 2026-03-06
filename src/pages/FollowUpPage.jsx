@@ -13,6 +13,7 @@ const EMPTY_DAY = { arrivalStatus: '', actualTransport: '', delayed: false, reas
 export default function FollowUpPage() {
   const { followUpOrders, followUpData, updateFollowUp, moveBackToWaiting, completeFollowUp } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
+  const [dayFilter, setDayFilter] = useState('all'); // 'all', 1, 2, 3
 
   const sortedOrders = useMemo(() => {
     const now = new Date();
@@ -43,16 +44,31 @@ export default function FollowUpPage() {
     });
   }, [followUpOrders, followUpData]);
 
+  const getCurrentDayForOrder = useCallback((fo) => {
+    const now = new Date();
+    const todayStrip = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const confirmed = fo.confirmedAt ? new Date(fo.confirmedAt) : null;
+    if (!confirmed) return 1;
+    const confirmStrip = new Date(confirmed.getFullYear(), confirmed.getMonth(), confirmed.getDate());
+    return Math.max(1, Math.floor((todayStrip - confirmStrip) / (1000 * 60 * 60 * 24)) + 1);
+  }, []);
+
   const filteredOrders = useMemo(() => {
-    if (!searchQuery) return sortedOrders;
-    const q = searchQuery.toLowerCase();
-    return sortedOrders.filter(fo =>
-      fo.order?.housemaidName?.toLowerCase().includes(q) ||
-      fo.order?.clientName?.toLowerCase().includes(q) ||
-      fo.driverName?.toLowerCase().includes(q) ||
-      fo.routeLabel?.toLowerCase().includes(q)
-    );
-  }, [sortedOrders, searchQuery]);
+    let result = sortedOrders;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(fo =>
+        fo.order?.housemaidName?.toLowerCase().includes(q) ||
+        fo.order?.clientName?.toLowerCase().includes(q) ||
+        fo.driverName?.toLowerCase().includes(q) ||
+        fo.routeLabel?.toLowerCase().includes(q)
+      );
+    }
+    if (dayFilter !== 'all') {
+      result = result.filter(fo => getCurrentDayForOrder(fo) === dayFilter);
+    }
+    return result;
+  }, [sortedOrders, searchQuery, dayFilter, getCurrentDayForOrder]);
 
   const { pending, done } = useMemo(() => {
     const now = new Date();
@@ -119,16 +135,29 @@ export default function FollowUpPage() {
         </div>
       </div>
 
-      <div className="wl-search-bar">
-        <svg className="search-icon" width="18" height="18" viewBox="0 0 18 18" fill="none">
-          <path d="M8.25 14.25a6 6 0 100-12 6 6 0 000 12zM15.75 15.75l-3.263-3.263" stroke="#94A3B8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-        <input
-          type="text"
-          placeholder="Search by maid, client, driver, or route..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
+      <div className="fu-toolbar">
+        <div className="wl-search-bar">
+          <svg className="search-icon" width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <path d="M8.25 14.25a6 6 0 100-12 6 6 0 000 12zM15.75 15.75l-3.263-3.263" stroke="#94A3B8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          <input
+            type="text"
+            placeholder="Search by maid, client, driver, or route..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+        <div className="fu-day-filter">
+          {['all', 1, 2, 3].map(d => (
+            <button
+              key={d}
+              className={`fu-day-filter-btn${dayFilter === d ? ' active' : ''}`}
+              onClick={() => setDayFilter(d)}
+            >
+              {d === 'all' ? 'All Days' : `Day ${d}`}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="fu-cards-list">

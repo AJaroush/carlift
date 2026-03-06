@@ -1,9 +1,10 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { suggestDrivers, suggestedPickupTime, formatTimeTo12h, addHours } from '../utils/clustering';
 import DriverMessageBubble from './DriverMessageBubble';
 import MaidMessageBubble from './MaidMessageBubble';
+import EditOrderModal from './EditOrderModal';
 
 function generatePickupTimes() {
   const times = [];
@@ -44,7 +45,8 @@ function minutesToTime(mins) {
 }
 
 export default function TripCard({ trip }) {
-  const { drivers, confirmOrder, confirmTripDriver, tripAssignments } = useApp();
+  const { drivers, confirmOrder, confirmTripDriver, tripAssignments, updateOrder, deleteOrder } = useApp();
+  const [editingOrder, setEditingOrder] = useState(null);
 
   // Check if any order in this trip already has a confirmed assignment (survives re-clustering)
   const existingAssignment = useMemo(() => {
@@ -150,6 +152,20 @@ export default function TripCard({ trip }) {
               <path d="M5.5 5.5L10.5 10.5" stroke="#94A3B8" strokeWidth="1.2" strokeDasharray="2 2"/>
             </svg>
             <span className="route-text">{trip.routeLabel}</span>
+            {trip.orders.length === 1 && (
+              <>
+                <button className="edit-order-btn" onClick={(e) => { e.stopPropagation(); setEditingOrder(trip.orders[0]); }} title="Edit order">
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M8.5 1.5l2 2-7 7H1.5V8.5l7-7z" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+                <button className="delete-order-btn" onClick={(e) => { e.stopPropagation(); if (window.confirm('Delete this order?')) deleteOrder(trip.orders[0].id || trip.orders[0].contractId); }} title="Delete order">
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M1.5 3h9M4.5 3V1.5h3V3M9 3v7.5H3V3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+              </>
+            )}
           </div>
           <div className="trip-meta">
             <span className="trip-badge seats">
@@ -191,6 +207,7 @@ export default function TripCard({ trip }) {
                   <th>DAYS HIRED</th>
                   <th>DUTY TIME</th>
                   <th>RETURN TIME</th>
+                  <th>TO-DO LINK</th>
                 </tr>
               </thead>
               <tbody>
@@ -211,6 +228,20 @@ export default function TripCard({ trip }) {
                       <td>
                         <div className="order-maid">
                           <span className="maid-name-text">{order.housemaidName || '—'}</span>
+                          {trip.orders.length > 1 && (
+                            <>
+                              <button className="edit-order-btn" onClick={() => setEditingOrder(order)} title="Edit order">
+                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                                  <path d="M8.5 1.5l2 2-7 7H1.5V8.5l7-7z" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </button>
+                              <button className="delete-order-btn" onClick={() => { if (window.confirm('Delete this order?')) deleteOrder(oid); }} title="Delete order">
+                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                                  <path d="M1.5 3h9M4.5 3V1.5h3V3M9 3v7.5H3V3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </button>
+                            </>
+                          )}
                           {order.housemaidPhone && (
                             <span className="maid-phone">{order.housemaidPhone}</span>
                           )}
@@ -242,6 +273,16 @@ export default function TripCard({ trip }) {
                             <option key={t.value} value={t.value}>{t.label}</option>
                           ))}
                         </select>
+                      </td>
+                      <td>
+                        <a
+                          href={`https://erp.maids.cc/post-sale-services/v2/open-todo/${oid}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="todo-link"
+                        >
+                          Open
+                        </a>
                       </td>
                     </tr>
                   );
@@ -401,6 +442,18 @@ export default function TripCard({ trip }) {
             </div>
           )}
         </div>
+      )}
+
+      {editingOrder && (
+        <EditOrderModal
+          order={editingOrder}
+          onSave={(updates) => {
+            const oid = editingOrder.id || editingOrder.contractId;
+            updateOrder(oid, updates);
+            setEditingOrder(null);
+          }}
+          onClose={() => setEditingOrder(null)}
+        />
       )}
     </div>
   );

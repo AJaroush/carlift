@@ -1445,6 +1445,53 @@
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 }
 
+.edit-order-btn {
+  background: none;
+  border: none;
+  color: #94A3B8;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 4px;
+  vertical-align: middle;
+  transition: color 0.15s, background 0.15s;
+}
+.edit-order-btn:hover {
+  color: #3B82F6;
+  background: #EFF6FF;
+}
+.delete-order-btn {
+  background: none;
+  border: none;
+  color: #94A3B8;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 2px;
+  vertical-align: middle;
+  transition: color 0.15s, background 0.15s;
+}
+.delete-order-btn:hover {
+  color: #EF4444;
+  background: #FEF2F2;
+}
+
+.todo-link {
+  color: #3B82F6;
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.todo-link:hover {
+  text-decoration: underline;
+}
+
 .days-hired-badge {
   display: inline-block;
   padding: 2px 10px;
@@ -1812,6 +1859,40 @@
 /* ========================================
    FOLLOW-UP CARDS
    ======================================== */
+
+.fu-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 0;
+}
+.fu-toolbar .wl-search-bar {
+  flex: 1;
+}
+.fu-day-filter {
+  display: flex;
+  gap: 6px;
+}
+.fu-day-filter-btn {
+  padding: 6px 14px;
+  border: 1px solid #E2E8F0;
+  background: #fff;
+  color: #64748B;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.fu-day-filter-btn:hover {
+  border-color: #3B82F6;
+  color: #3B82F6;
+}
+.fu-day-filter-btn.active {
+  background: #3B82F6;
+  color: #fff;
+  border-color: #3B82F6;
+}
 
 .fu-cards-list {
   display: flex;

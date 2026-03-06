@@ -1,4 +1,21 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import {
+  fetchFollowUpOrders as sbFetchFollowUpOrders,
+  fetchFollowUpData as sbFetchFollowUpData,
+  fetchHistoryOrders as sbFetchHistoryOrders,
+  upsertFollowUpOrder,
+  upsertFollowUpData,
+  deleteFollowUpOrder,
+  insertHistoryOrder,
+  subscribeToFollowUp,
+  subscribeToHistory,
+  upsertOrders as sbUpsertOrders,
+  upsertOrder as sbUpsertOrder,
+  fetchOrders as sbFetchOrders,
+  subscribeToOrders,
+  updateOrderInDb,
+  deleteOrderFromDb,
+} from '../lib/supabase';
 
 const AppContext = createContext(null);
 
@@ -366,18 +383,53 @@ export function AppProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [drivers, setDrivers] = useState(() => loadFromStorage('carlift_drivers', INITIAL_DRIVERS));
-  const [followUpOrders, setFollowUpOrders] = useState(() => loadFromStorage('carlift_followup_orders', []));
-  const [followUpData, setFollowUpData] = useState(() => loadFromStorage('carlift_followup_data', {}));
+  const [followUpOrders, setFollowUpOrders] = useState([]);
+  const [followUpData, setFollowUpData] = useState({});
   // Track confirmed driver assignments per order so TripCard state survives re-clustering
   const [tripAssignments, setTripAssignments] = useState(() => loadFromStorage('carlift_trip_assignments', {}));
-  const [historyOrders, setHistoryOrders] = useState(() => loadFromStorage('carlift_history_orders', []));
+  const [historyOrders, setHistoryOrders] = useState([]);
 
-  // Persist to localStorage
+  // Persist drivers & trip assignments to localStorage (unchanged)
   useEffect(() => { saveToStorage('carlift_drivers', drivers); }, [drivers]);
-  useEffect(() => { saveToStorage('carlift_followup_orders', followUpOrders); }, [followUpOrders]);
-  useEffect(() => { saveToStorage('carlift_followup_data', followUpData); }, [followUpData]);
   useEffect(() => { saveToStorage('carlift_trip_assignments', tripAssignments); }, [tripAssignments]);
-  useEffect(() => { saveToStorage('carlift_history_orders', historyOrders); }, [historyOrders]);
+
+  // ── Supabase: initial load + realtime subscriptions ───────────
+  const refreshFollowUp = useCallback(async () => {
+    try {
+      const [orders, data] = await Promise.all([
+        sbFetchFollowUpOrders(),
+        sbFetchFollowUpData(),
+      ]);
+      setFollowUpOrders(orders);
+      setFollowUpData(data);
+    } catch (err) {
+      console.error('Failed to load follow-up from Supabase:', err);
+    }
+  }, []);
+
+  const refreshHistory = useCallback(async () => {
+    try {
+      const data = await sbFetchHistoryOrders();
+      setHistoryOrders(data);
+    } catch (err) {
+      console.error('Failed to load history from Supabase:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    // Initial load from Supabase
+    refreshFollowUp();
+    refreshHistory();
+
+    // Realtime: re-fetch on any change so all clients stay in sync
+    const unsubFollowUp = subscribeToFollowUp(() => refreshFollowUp());
+    const unsubHistory = subscribeToHistory(() => refreshHistory());
+
+    return () => {
+      unsubFollowUp();
+      unsubHistory();
+    };
+  }, [refreshFollowUp, refreshHistory]);
 
   // Compound area names that start with a city name — must NOT strip the city word
   const COMPOUND_AREAS = [
@@ -466,46 +518,7 @@ export function AppProvider({ children }) {
   };
   };
 
-  const STATIC_EXAMPLES = [
-    {
-      id: 'FAKE-001',
-      contractId: 'FAKE-001',
-      clientName: '[FAKE] Sarah Al Maktoum',
-      clientLocation: 'JLT Cluster D',
-      clientArea: 'JLT',
-      housemaidName: '[FAKE] Maria Santos',
-      housemaidPhone: '+971 50 111 1111',
-      housemaidStatus: 'PENDING',
-      maidLocation: 'Satwa',
-      pickupArea: 'Satwa',
-      dropoffArea: 'JLT',
-      creationDate: '2026-03-04 07:00:00',
-      transferDate: '2026-03-01 08:00:00',
-      typeOfTheContractLabel: 'Satwa',
-      assignee: null,
-      pendingStatus: true,
-      maidLat: null, maidLong: null, clientLat: null, clientLong: null,
-    },
-    {
-      id: 'FAKE-002',
-      contractId: 'FAKE-002',
-      clientName: '[FAKE] Ahmed Bin Rashid',
-      clientLocation: 'JLT Cluster O',
-      clientArea: 'JLT',
-      housemaidName: '[FAKE] Priya Sharma',
-      housemaidPhone: '+971 50 222 2222',
-      housemaidStatus: 'PENDING',
-      maidLocation: 'Satwa',
-      pickupArea: 'Satwa',
-      dropoffArea: 'JLT',
-      creationDate: '2026-03-04 07:15:00',
-      transferDate: '2026-03-02 08:00:00',
-      typeOfTheContractLabel: 'Satwa',
-      assignee: null,
-      pendingStatus: true,
-      maidLat: null, maidLong: null, clientLat: null, clientLong: null,
-    },
-  ];
+  const STATIC_EXAMPLES = [];
 
   const hasFetchedOnce = useRef(false);
 
@@ -554,7 +567,35 @@ export function AppProvider({ children }) {
         if (i < geoTasks.length - 1) await new Promise(r => setTimeout(r, 1100));
       }
 
-      setOrders([...STATIC_EXAMPLES, ...mapped]);
+      // Merge with Supabase: prefer Supabase version for edited orders
+      const allProcessed = [...STATIC_EXAMPLES, ...mapped];
+      try {
+        const sbOrders = await sbFetchOrders();
+        const sbMap = new Map(sbOrders.map(o => [o.id || o.contractId, o]));
+
+        // For API orders, use Supabase version if it exists (user may have edited it)
+        const merged = allProcessed.map(o => {
+          const oid = o.id || o.contractId;
+          const sbVersion = sbMap.get(oid);
+          return sbVersion || o;
+        });
+
+        // Add manual-only orders (not in API batch)
+        const apiIds = new Set(allProcessed.map(o => o.id || o.contractId));
+        const manualOnly = sbOrders.filter(o => !apiIds.has(o.id || o.contractId));
+
+        setOrders([...merged, ...manualOnly]);
+
+        // Upsert any new API orders that aren't in Supabase yet
+        const newApiOrders = allProcessed.filter(o => !sbMap.has(o.id || o.contractId));
+        if (newApiOrders.length > 0) {
+          sbUpsertOrders(newApiOrders, 'api').catch(err => console.error('Supabase upsert orders failed:', err));
+        }
+      } catch {
+        // Supabase unavailable — use API data directly
+        setOrders(allProcessed);
+        sbUpsertOrders(allProcessed, 'api').catch(err => console.error('Supabase upsert orders failed:', err));
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -567,7 +608,25 @@ export function AppProvider({ children }) {
     fetchOrders();
     const interval = setInterval(fetchOrders, 10000);
     return () => clearInterval(interval);
+
+    // Note: orders realtime subscription is not needed here because
+    // fetchOrders already runs every 10s and merges manual orders.
+    // But we add it so manual orders from OTHER users appear faster.
   }, [fetchOrders]);
+
+  // Realtime: when another user adds a manual order, merge it in
+  useEffect(() => {
+    const unsub = subscribeToOrders(async (payload) => {
+      if (payload.eventType === 'INSERT' && payload.new?.source === 'manual') {
+        const newOrder = payload.new.order_data;
+        setOrders(prev => {
+          if (prev.some(o => (o.id || o.contractId) === (newOrder.id || newOrder.contractId))) return prev;
+          return [...prev, newOrder];
+        });
+      }
+    });
+    return () => unsub();
+  }, []);
 
   // Filter out orders that are already in follow-up
   const followUpOrderIds = new Set(followUpOrders.map(o => o.orderId));
@@ -585,59 +644,70 @@ export function AppProvider({ children }) {
   }, []);
 
   // Move a single order to follow-up with its driver/trip context
-  const confirmOrder = useCallback((order, driverInfo, tripInfo) => {
+  const confirmOrder = useCallback(async (order, driverInfo, tripInfo) => {
     const orderId = order.id || order.contractId;
+    const entry = {
+      orderId,
+      order,
+      driverName: driverInfo.name,
+      driverPhone: driverInfo.phone,
+      driverPrice: driverInfo.price,
+      driverId: driverInfo.id,
+      routeLabel: tripInfo.routeLabel,
+      pickupLabel: tripInfo.pickupLabel,
+      dropoffLabel: tripInfo.dropoffLabel,
+      timeWindow: tripInfo.timeWindow,
+      plannedTransportation: 'Carlift',
+      confirmedAt: new Date().toISOString(),
+    };
+    // Optimistic local update
     setFollowUpOrders(prev => {
       if (prev.some(o => o.orderId === orderId)) return prev;
-      return [...prev, {
-        orderId,
-        order,
-        driverName: driverInfo.name,
-        driverPhone: driverInfo.phone,
-        driverPrice: driverInfo.price,
-        driverId: driverInfo.id,
-        routeLabel: tripInfo.routeLabel,
-        pickupLabel: tripInfo.pickupLabel,
-        dropoffLabel: tripInfo.dropoffLabel,
-        timeWindow: tripInfo.timeWindow,
-        plannedTransportation: 'Carlift',
-        confirmedAt: new Date().toISOString(),
-      }];
+      return [...prev, entry];
     });
-    // Clean up the trip assignment for this order
     setTripAssignments(prev => {
       const next = { ...prev };
       delete next[orderId];
       return next;
     });
+    // Persist to Supabase
+    try { await upsertFollowUpOrder(entry); } catch (err) { console.error('Supabase upsert follow-up order failed:', err); }
   }, []);
 
-  const moveBackToWaiting = useCallback((orderId) => {
+  const moveBackToWaiting = useCallback(async (orderId) => {
+    // Optimistic local update
     setFollowUpOrders(prev => prev.filter(o => o.orderId !== orderId));
     setFollowUpData(prev => {
       const next = { ...prev };
       delete next[orderId];
       return next;
     });
+    // Persist to Supabase (cascade deletes follow_up_data)
+    try { await deleteFollowUpOrder(orderId); } catch (err) { console.error('Supabase delete follow-up order failed:', err); }
   }, []);
 
-  const updateFollowUp = useCallback((orderId, data) => {
+  const updateFollowUp = useCallback(async (orderId, data) => {
+    // Optimistic local update
     setFollowUpData(prev => ({
       ...prev,
       [orderId]: { ...(prev[orderId] || {}), ...data },
     }));
+    // Persist to Supabase
+    try { await upsertFollowUpData(orderId, data); } catch (err) { console.error('Supabase upsert follow-up data failed:', err); }
   }, []);
 
-  const completeFollowUp = useCallback((orderId) => {
+  const completeFollowUp = useCallback(async (orderId) => {
     const fo = followUpOrders.find(o => o.orderId === orderId);
     if (!fo) return;
+    const historyEntry = {
+      ...fo,
+      followUpData: followUpData[orderId] || {},
+      completedAt: new Date().toISOString(),
+    };
+    // Optimistic local update
     setHistoryOrders(prev => {
       if (prev.some(h => h.orderId === orderId)) return prev;
-      return [...prev, {
-        ...fo,
-        followUpData: followUpData[orderId] || {},
-        completedAt: new Date().toISOString(),
-      }];
+      return [...prev, historyEntry];
     });
     setFollowUpOrders(prev => prev.filter(o => o.orderId !== orderId));
     setFollowUpData(prev => {
@@ -645,6 +715,11 @@ export function AppProvider({ children }) {
       delete next[orderId];
       return next;
     });
+    // Persist to Supabase
+    try {
+      await insertHistoryOrder(historyEntry);
+      await deleteFollowUpOrder(orderId);
+    } catch (err) { console.error('Supabase complete follow-up failed:', err); }
   }, [followUpOrders, followUpData]);
 
   const addDriver = useCallback((driver) => {
@@ -663,8 +738,28 @@ export function AppProvider({ children }) {
     setDrivers(prev => prev.filter(d => d.id !== id));
   }, []);
 
-  const addManualOrder = useCallback((order) => {
+  const addManualOrder = useCallback(async (order) => {
     setOrders(prev => [...prev, order]);
+    try { await sbUpsertOrder(order, 'manual'); } catch (err) { console.error('Supabase upsert manual order failed:', err); }
+  }, []);
+
+  const updateOrder = useCallback(async (orderId, updates) => {
+    let mergedOrder = null;
+    setOrders(prev => prev.map(o => {
+      const oid = o.id || o.contractId;
+      if (oid !== orderId) return o;
+      mergedOrder = { ...o, ...updates };
+      return mergedOrder;
+    }));
+    // Persist to Supabase
+    if (mergedOrder) {
+      try { await updateOrderInDb(mergedOrder); } catch (err) { console.error('Supabase update order failed:', err); }
+    }
+  }, []);
+
+  const deleteOrder = useCallback(async (orderId) => {
+    setOrders(prev => prev.filter(o => (o.id || o.contractId) !== orderId));
+    try { await deleteOrderFromDb(orderId); } catch (err) { console.error('Supabase delete order failed:', err); }
   }, []);
 
   return (
@@ -689,6 +784,8 @@ export function AppProvider({ children }) {
       historyOrders,
       completeFollowUp,
       addManualOrder,
+      updateOrder,
+      deleteOrder,
     }}>
       {children}
     </AppContext.Provider>
