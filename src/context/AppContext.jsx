@@ -15,11 +15,12 @@ import {
   subscribeToOrders,
   updateOrderInDb,
   deleteOrderFromDb,
+  updateHistoryOrder,
 } from '../lib/supabase';
 
 const AppContext = createContext(null);
 
-const API_URL = 'https://n8n.teljoy.io/webhook/b275943b-5eac-470b-a536-440821d67dd7';
+const API_URL = 'https://n8n-analysis.teljoy.io/webhook/b275943b-5eac-470b-a536-440821d67dd7';
 const USE_MOCK = false;
 
 const MOCK_ORDERS = [
@@ -757,6 +758,18 @@ export function AppProvider({ children }) {
     }
   }, []);
 
+  const updateHistoryOrderData = useCallback(async (orderId, updates) => {
+    let mergedOrder = null;
+    setHistoryOrders(prev => prev.map(ho => {
+      if (ho.orderId !== orderId) return ho;
+      mergedOrder = { ...ho.order, ...updates };
+      return { ...ho, order: mergedOrder };
+    }));
+    if (mergedOrder) {
+      try { await updateHistoryOrder(orderId, mergedOrder); } catch (err) { console.error('Supabase update history order failed:', err); }
+    }
+  }, []);
+
   const deleteOrder = useCallback(async (orderId) => {
     setOrders(prev => prev.filter(o => (o.id || o.contractId) !== orderId));
     try { await deleteOrderFromDb(orderId); } catch (err) { console.error('Supabase delete order failed:', err); }
@@ -786,6 +799,7 @@ export function AppProvider({ children }) {
       addManualOrder,
       updateOrder,
       deleteOrder,
+      updateHistoryOrderData,
     }}>
       {children}
     </AppContext.Provider>

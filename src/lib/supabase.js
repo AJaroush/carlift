@@ -138,6 +138,14 @@ export async function insertHistoryOrder(entry) {
   if (error) throw error;
 }
 
+export async function updateHistoryOrder(orderId, orderData) {
+  const { error } = await supabase
+    .from('history_orders')
+    .update({ order_data: orderData })
+    .eq('order_id', orderId);
+  if (error) throw error;
+}
+
 // ── Orders (API + manual) ───────────────────────────────────────
 
 export async function fetchOrders() {

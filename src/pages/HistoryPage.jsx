@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import EditOrderModal from '../components/EditOrderModal';
 
-const DAYS = [1, 2, 3];
 const FIELD_LABELS = {
   arrivalStatus: 'Arrival Status',
   actualTransport: 'Actual Transport',
@@ -12,7 +12,7 @@ const FIELD_LABELS = {
 };
 
 export default function HistoryPage() {
-  const { historyOrders } = useApp();
+  const { historyOrders, updateHistoryOrderData } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredOrders = useMemo(() => {
@@ -70,17 +70,18 @@ export default function HistoryPage() {
 
       <div className="fu-cards-list">
         {filteredOrders.map((ho) => (
-          <HistoryCard key={ho.orderId} ho={ho} />
+          <HistoryCard key={ho.orderId} ho={ho} onUpdateOrder={updateHistoryOrderData} />
         ))}
       </div>
     </>
   );
 }
 
-function HistoryCard({ ho }) {
+function HistoryCard({ ho, onUpdateOrder }) {
   const order = ho.order;
   const fuData = ho.followUpData || {};
   const priority = fuData.priority || 'Normal';
+  const [editingOrder, setEditingOrder] = useState(null);
 
   const completedDate = ho.completedAt
     ? new Date(ho.completedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -92,7 +93,14 @@ function HistoryCard({ ho }) {
         <div className="fu-card-info-row">
           <div className="fu-card-info-item">
             <span className="fu-card-label">MAID</span>
-            <span className="fu-card-maid-name">{order.housemaidName || '—'}</span>
+            <span className="fu-card-maid-name">
+              {order.housemaidName || '—'}
+              <button className="edit-order-btn" onClick={() => setEditingOrder(order)} title="Edit order">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M8.5 1.5l2 2-7 7H1.5V8.5l7-7z" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            </span>
             {order.housemaidPhone && (
               <span className="fu-card-sub">{order.housemaidPhone}</span>
             )}
@@ -128,9 +136,13 @@ function HistoryCard({ ho }) {
 
       {/* Read-only follow-up day data */}
       <div className="history-days">
-        {DAYS.map(day => {
+        {Object.keys(fuData)
+          .filter(k => !isNaN(k))
+          .map(Number)
+          .sort((a, b) => a - b)
+          .map(day => {
           const dayData = fuData[day];
-          if (!dayData && day > 1) return null;
+          if (!dayData) return null;
           return (
             <div key={day} className="history-day-block">
               <div className="history-day-label">Day {day}</div>
@@ -150,6 +162,17 @@ function HistoryCard({ ho }) {
           );
         })}
       </div>
+
+      {editingOrder && (
+        <EditOrderModal
+          order={editingOrder}
+          onSave={(updates) => {
+            onUpdateOrder(ho.orderId, updates);
+            setEditingOrder(null);
+          }}
+          onClose={() => setEditingOrder(null)}
+        />
+      )}
     </div>
   );
 }

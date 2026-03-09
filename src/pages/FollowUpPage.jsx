@@ -6,7 +6,7 @@ const ARRIVAL_OPTIONS = ['', 'Yes', 'No', 'Failed to reach'];
 const TRANSPORT_OPTIONS = ['', 'Carlift', 'Taxi', 'Public transport'];
 const PRIORITY_OPTIONS = ['Normal', 'High', 'Urgent'];
 const PRIORITY_ORDER = { Urgent: 0, High: 1, Normal: 2 };
-const DAYS = [1, 2, 3];
+const MAX_FOLLOWUP_DAYS = 30;
 
 const EMPTY_DAY = { arrivalStatus: '', actualTransport: '', delayed: false, reason: '', notes: '' };
 
@@ -19,7 +19,12 @@ export default function FollowUpPage() {
     const now = new Date();
     const todayStrip = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    const getCurrentDay = (fo) => {
+    const getDayForOrder = (fo) => {
+      const transfer = fo.order?.transferDate ? new Date(fo.order.transferDate.replace(' ', 'T')) : null;
+      if (transfer) {
+        const transferStrip = new Date(transfer.getFullYear(), transfer.getMonth(), transfer.getDate());
+        return Math.max(1, Math.floor((todayStrip - transferStrip) / (1000 * 60 * 60 * 24)) + 1);
+      }
       const confirmed = fo.confirmedAt ? new Date(fo.confirmedAt) : null;
       if (!confirmed) return 1;
       const confirmStrip = new Date(confirmed.getFullYear(), confirmed.getMonth(), confirmed.getDate());
@@ -27,7 +32,7 @@ export default function FollowUpPage() {
     };
 
     const hasDayData = (fo) => {
-      const d = followUpData[fo.orderId]?.[getCurrentDay(fo)];
+      const d = followUpData[fo.orderId]?.[getDayForOrder(fo)];
       if (!d) return false;
       return !!(d.arrivalStatus || d.actualTransport || d.delayed || d.reason || d.notes);
     };
@@ -47,10 +52,17 @@ export default function FollowUpPage() {
   const getCurrentDayForOrder = useCallback((fo) => {
     const now = new Date();
     const todayStrip = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const confirmed = fo.confirmedAt ? new Date(fo.confirmedAt) : null;
-    if (!confirmed) return 1;
-    const confirmStrip = new Date(confirmed.getFullYear(), confirmed.getMonth(), confirmed.getDate());
-    return Math.max(1, Math.floor((todayStrip - confirmStrip) / (1000 * 60 * 60 * 24)) + 1);
+    // Use transferDate (how long maid has been with client) to determine follow-up day
+    const transfer = fo.order?.transferDate ? new Date(fo.order.transferDate.replace(' ', 'T')) : null;
+    if (!transfer) {
+      // Fallback to confirmedAt
+      const confirmed = fo.confirmedAt ? new Date(fo.confirmedAt) : null;
+      if (!confirmed) return 1;
+      const confirmStrip = new Date(confirmed.getFullYear(), confirmed.getMonth(), confirmed.getDate());
+      return Math.max(1, Math.floor((todayStrip - confirmStrip) / (1000 * 60 * 60 * 24)) + 1);
+    }
+    const transferStrip = new Date(transfer.getFullYear(), transfer.getMonth(), transfer.getDate());
+    return Math.max(1, Math.floor((todayStrip - transferStrip) / (1000 * 60 * 60 * 24)) + 1);
   }, []);
 
   const filteredOrders = useMemo(() => {
@@ -70,11 +82,25 @@ export default function FollowUpPage() {
     return result;
   }, [sortedOrders, searchQuery, dayFilter, getCurrentDayForOrder]);
 
+  // Compute unique day numbers across all follow-up orders for filter buttons
+  const availableDays = useMemo(() => {
+    const days = new Set();
+    for (const fo of followUpOrders) {
+      days.add(getCurrentDayForOrder(fo));
+    }
+    return [...days].sort((a, b) => a - b);
+  }, [followUpOrders, getCurrentDayForOrder]);
+
   const { pending, done } = useMemo(() => {
     const now = new Date();
     const todayStrip = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    const getCurrentDay = (fo) => {
+    const getDayForOrder = (fo) => {
+      const transfer = fo.order?.transferDate ? new Date(fo.order.transferDate.replace(' ', 'T')) : null;
+      if (transfer) {
+        const transferStrip = new Date(transfer.getFullYear(), transfer.getMonth(), transfer.getDate());
+        return Math.max(1, Math.floor((todayStrip - transferStrip) / (1000 * 60 * 60 * 24)) + 1);
+      }
       const confirmed = fo.confirmedAt ? new Date(fo.confirmedAt) : null;
       if (!confirmed) return 1;
       const confirmStrip = new Date(confirmed.getFullYear(), confirmed.getMonth(), confirmed.getDate());
@@ -82,7 +108,7 @@ export default function FollowUpPage() {
     };
 
     const hasTodayData = (fo) => {
-      const day = getCurrentDay(fo);
+      const day = getDayForOrder(fo);
       const d = followUpData[fo.orderId]?.[day];
       if (!d) return false;
       return !!(d.arrivalStatus || d.actualTransport || d.delayed || d.reason || d.notes);
@@ -148,7 +174,7 @@ export default function FollowUpPage() {
           />
         </div>
         <div className="fu-day-filter">
-          {['all', 1, 2, 3].map(d => (
+          {['all', ...availableDays].map(d => (
             <button
               key={d}
               className={`fu-day-filter-btn${dayFilter === d ? ' active' : ''}`}
@@ -205,6 +231,50 @@ export default function FollowUpPage() {
   );
 }
 
+const PRESET_REASONS = ["Couldn't find carlift", 'Maid decided public transport'];
+
+function ReasonField({ reason, onChange }) {
+  const isPreset = PRESET_REASONS.includes(reason);
+  const [isOther, setIsOther] = useState(!isPreset && reason !== '' && reason != null);
+
+  const selectValue = isPreset ? reason : isOther ? 'Other' : '';
+
+  return (
+    <div className="fu-field-group">
+      <label className="fu-field-label">Reason</label>
+      <select
+        className="fu-select"
+        value={selectValue}
+        onChange={(e) => {
+          const val = e.target.value;
+          if (val === 'Other') {
+            setIsOther(true);
+            onChange('');
+          } else {
+            setIsOther(false);
+            onChange(val);
+          }
+        }}
+      >
+        <option value="">— Select —</option>
+        <option value="Couldn't find carlift">Couldn't find carlift</option>
+        <option value="Maid decided public transport">Maid decided public transport</option>
+        <option value="Other">Other</option>
+      </select>
+      {isOther && (
+        <input
+          type="text"
+          className="fu-input"
+          placeholder="Specify reason..."
+          value={reason || ''}
+          onChange={(e) => onChange(e.target.value)}
+          style={{ marginTop: 6 }}
+        />
+      )}
+    </div>
+  );
+}
+
 function FollowUpCard({ fo, data, onSave, onMoveBack, onPriorityChange, onComplete }) {
   const order = fo.order;
   const now = new Date();
@@ -212,13 +282,17 @@ function FollowUpCard({ fo, data, onSave, onMoveBack, onPriorityChange, onComple
   const transferDate = order.transferDate ? new Date(order.transferDate.replace(' ', 'T')) : null;
   const daysHired = transferDate ? Math.max(0, Math.ceil((now - transferDate) / (1000 * 60 * 60 * 24))) : '—';
 
-  // Calculate follow-up day: day 1 = confirmed today, day 2 = confirmed yesterday, etc.
-  const confirmedDate = fo.confirmedAt ? new Date(fo.confirmedAt) : null;
-  const confirmedDay = confirmedDate
-    ? new Date(confirmedDate.getFullYear(), confirmedDate.getMonth(), confirmedDate.getDate())
-    : null;
+  // Calculate follow-up day based on transferDate (how long maid has been with client)
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const followUpDays = confirmedDay ? Math.floor((today - confirmedDay) / (1000 * 60 * 60 * 24)) + 1 : 1;
+  let followUpDays = 1;
+  if (transferDate) {
+    const transferStrip = new Date(transferDate.getFullYear(), transferDate.getMonth(), transferDate.getDate());
+    followUpDays = Math.max(1, Math.floor((today - transferStrip) / (1000 * 60 * 60 * 24)) + 1);
+  } else if (fo.confirmedAt) {
+    const confirmedDate = new Date(fo.confirmedAt);
+    const confirmedDay = new Date(confirmedDate.getFullYear(), confirmedDate.getMonth(), confirmedDate.getDate());
+    followUpDays = Math.max(1, Math.floor((today - confirmedDay) / (1000 * 60 * 60 * 24)) + 1);
+  }
 
   const priority = data.priority || 'Normal';
 
@@ -228,8 +302,8 @@ function FollowUpCard({ fo, data, onSave, onMoveBack, onPriorityChange, onComple
     onPriorityChange(next);
   }, [priority, onPriorityChange]);
 
-  // Default to the current follow-up day (clamped to 1–3)
-  const currentDay = typeof followUpDays === 'number' ? Math.min(Math.max(followUpDays, 1), 3) : 1;
+  // Default to the current follow-up day (no cap)
+  const currentDay = typeof followUpDays === 'number' ? Math.max(followUpDays, 1) : 1;
   const [selectedDay, setSelectedDay] = useState(currentDay);
 
   // Load saved data for current day
@@ -298,6 +372,17 @@ function FollowUpCard({ fo, data, onSave, onMoveBack, onPriorityChange, onComple
           <div className="fu-card-info-item">
             <span className="fu-card-label">FOLLOW-UP DAYS</span>
             <span className="followup-days-badge">{followUpDays} {followUpDays === 1 ? 'day' : 'days'}</span>
+          </div>
+          <div className="fu-card-info-item">
+            <span className="fu-card-label">TO-DO LINK</span>
+            <a
+              href={`https://erp.maids.cc/post-sale-services/v2/open-todo/${fo.orderId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="todo-link"
+            >
+              Open
+            </a>
           </div>
           <div className="fu-card-info-item">
             <span className="fu-card-label">PLANNED</span>
@@ -383,16 +468,7 @@ function FollowUpCard({ fo, data, onSave, onMoveBack, onPriorityChange, onComple
             </div>
           </div>
 
-          <div className="fu-field-group">
-            <label className="fu-field-label">Reason</label>
-            <input
-              type="text"
-              className="fu-input"
-              placeholder="Reason..."
-              value={draft.reason || ''}
-              onChange={(e) => handleFieldChange('reason', e.target.value)}
-            />
-          </div>
+          <ReasonField reason={draft.reason} onChange={(val) => handleFieldChange('reason', val)} />
 
           <div className="fu-field-group fu-field-notes">
             <label className="fu-field-label">Agent Notes</label>
