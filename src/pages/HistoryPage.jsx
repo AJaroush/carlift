@@ -12,16 +12,16 @@ const FIELD_LABELS = {
 };
 
 export default function HistoryPage() {
-  const { historyOrders, updateHistoryOrderData, moveHistoryToFollowUp } = useApp();
+  const { historyOrders, updateHistoryOrderData, moveHistoryToFollowUp, followUpOrders, followUpData } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
 
   const transportCounts = useMemo(() => {
     const counts = { carlift: 0, publicTransport: 0, zoneDriver: 0 };
-    for (const ho of historyOrders) {
-      const fuData = ho.followUpData || {};
-      const dayKeys = Object.keys(fuData).filter(k => !isNaN(k)).map(Number).sort((a, b) => b - a);
+    const countTransport = (fuEntry) => {
+      if (!fuEntry) return;
+      const dayKeys = Object.keys(fuEntry).filter(k => !isNaN(k)).map(Number).sort((a, b) => b - a);
       for (const day of dayKeys) {
-        const t = fuData[day]?.actualTransport;
+        const t = fuEntry[day]?.actualTransport;
         if (t) {
           if (t === 'Carlift') counts.carlift++;
           else if (t === 'Public transport') counts.publicTransport++;
@@ -29,9 +29,17 @@ export default function HistoryPage() {
           break;
         }
       }
+    };
+    // Count from history
+    for (const ho of historyOrders) {
+      countTransport(ho.followUpData);
+    }
+    // Count from active follow-up
+    for (const fo of followUpOrders) {
+      countTransport(followUpData[fo.orderId]);
     }
     return counts;
-  }, [historyOrders]);
+  }, [historyOrders, followUpOrders, followUpData]);
 
   const filteredOrders = useMemo(() => {
     if (!searchQuery) return historyOrders;

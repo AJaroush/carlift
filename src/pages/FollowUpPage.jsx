@@ -12,7 +12,7 @@ const MAX_FOLLOWUP_DAYS = 30;
 const EMPTY_DAY = { arrivalStatus: '', actualTransport: '', delayed: false, reason: '', notes: '' };
 
 export default function FollowUpPage() {
-  const { followUpOrders, followUpData, updateFollowUp, moveBackToWaiting, completeFollowUp, updateFollowUpOrderInContext } = useApp();
+  const { followUpOrders, followUpData, updateFollowUp, moveBackToWaiting, completeFollowUp, updateFollowUpOrderInContext, historyOrders } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [dayFilter, setDayFilter] = useState('all'); // 'all', 1, 2, 3
   const [showSnoozed, setShowSnoozed] = useState(false);
@@ -134,9 +134,9 @@ export default function FollowUpPage() {
 
   const transportCounts = useMemo(() => {
     const counts = { carlift: 0, publicTransport: 0, zoneDriver: 0 };
-    for (const fo of followUpOrders) {
-      const fuEntry = followUpData[fo.orderId];
-      if (!fuEntry) continue;
+    // Helper: count the latest transport type from a follow-up data entry
+    const countTransport = (fuEntry) => {
+      if (!fuEntry) return;
       const dayKeys = Object.keys(fuEntry).filter(k => !isNaN(k)).map(Number).sort((a, b) => b - a);
       for (const day of dayKeys) {
         const t = fuEntry[day]?.actualTransport;
@@ -147,9 +147,17 @@ export default function FollowUpPage() {
           break;
         }
       }
+    };
+    // Count from active follow-up
+    for (const fo of followUpOrders) {
+      countTransport(followUpData[fo.orderId]);
+    }
+    // Count from history
+    for (const ho of historyOrders) {
+      countTransport(ho.followUpData);
     }
     return counts;
-  }, [followUpOrders, followUpData]);
+  }, [followUpOrders, followUpData, historyOrders]);
 
   const { pending, done } = useMemo(() => {
     const now = new Date();

@@ -1,12 +1,11 @@
 /**
- * Cluster orders into trips by pickup/dropoff proximity and time window.
+ * Cluster orders into trips by pickup/dropoff proximity.
  *
- * Uses geo-coordinates (maidLat/maidLong, clientLat/clientLong) when available
- * for distance-based clustering, falling back to text-based area matching.
+ * Uses centroid-based geo-clustering (maidLat/maidLong, clientLat/clientLong)
+ * when coordinates are available, falling back to text-based area matching.
  */
 
-const TIME_WINDOW_MINUTES = 60;
-const GEO_RADIUS_KM = 5; // max distance in km to cluster maids together
+const GEO_RADIUS_KM = 5;
 
 /**
  * Haversine distance between two lat/long points in km.
@@ -85,48 +84,27 @@ function normalizeDisplayArea(name) {
   return n;
 }
 
+function validArea(val) {
+  return val && val !== 'N/A' && val !== 'Location N/A' && val !== 'Unknown' ? val : null;
+}
+
 function getPickupArea(order) {
-  return normalizeArea(order.pickupArea || order.maidLocation || order.typeOfTheContractLabel || 'Unknown');
+  return normalizeArea(validArea(order.pickupArea) || validArea(order.maidLocation) || order.typeOfTheContractLabel || 'Unknown');
 }
 
 function getDropoffArea(order) {
-  return normalizeArea(order.dropoffArea || order.clientLocation || order.clientArea || 'Unknown');
+  return normalizeArea(validArea(order.dropoffArea) || validArea(order.clientLocation) || validArea(order.clientArea) || 'Unknown');
 }
 
 function areasMatch(a, b) {
+  if (!a || !b || a === 'unknown' || b === 'unknown' || a === 'n/a' || b === 'n/a') return false;
   const na = normalizeArea(a);
   const nb = normalizeArea(b);
   if (na === nb) return true;
+  if (na.includes(nb) || nb.includes(na)) return true;
   const wordsA = na.split(/[,\s]+/).filter(Boolean);
   const wordsB = nb.split(/[,\s]+/).filter(Boolean);
-  return wordsA.some(w => w.length > 2 && wordsB.includes(w));
-}
-
-function timesClose(t1, t2) {
-  if (t1 === null || t2 === null) return true;
-  return Math.abs(t1 - t2) <= TIME_WINDOW_MINUTES;
-}
-
-/**
- * Check if two orders are near each other based on maid pickup locations.
- * Uses geo-coordinates if both have them, otherwise falls back to text matching.
- */
-function pickupsNear(orderA, orderB) {
-  if (orderA.maidLat && orderA.maidLong && orderB.maidLat && orderB.maidLong) {
-    return haversineKm(orderA.maidLat, orderA.maidLong, orderB.maidLat, orderB.maidLong) <= GEO_RADIUS_KM;
-  }
-  return areasMatch(getPickupArea(orderA), getPickupArea(orderB));
-}
-
-/**
- * Check if two orders have nearby dropoff (client) locations.
- * Uses geo-coordinates if both have them, otherwise falls back to text matching.
- */
-function dropoffsNear(orderA, orderB) {
-  if (orderA.clientLat && orderA.clientLong && orderB.clientLat && orderB.clientLong) {
-    return haversineKm(orderA.clientLat, orderA.clientLong, orderB.clientLat, orderB.clientLong) <= GEO_RADIUS_KM;
-  }
-  return areasMatch(getDropoffArea(orderA), getDropoffArea(orderB));
+  return wordsA.some(w => w.length > 3 && wordsB.includes(w));
 }
 
 /**
@@ -140,7 +118,6 @@ function extractAreaName(address) {
 
   // Known Dubai/UAE area keywords — longer names first to match more specific areas
   const knownAreas = [
-    // Multi-word areas first (longer names matched before shorter)
     'Victory Heights', 'Arabian Ranches', 'Palm Jumeirah', 'Business Bay', 'Silicon Oasis',
     'Sports City', 'Motor City', 'International City', 'Discovery Gardens', 'Dubai Hills',
     'Dubai Marina', 'Dubai Downtown', 'Barsha Heights', 'Emirates Hills', 'Damac Hills',
@@ -152,7 +129,6 @@ function extractAreaName(address) {
     'Al Muneera', 'Al Rahba', 'Al Ranim',
     'Abu Hail', 'Umm Suqeim', 'Umm Ramool', 'Um Ramool', 'Oud Metha',
     'Yas Aspens', 'Yas Acres',
-    // Short/single-word areas
     'JLT', 'JVC', 'JBR', 'DIFC', 'Downtown', 'Marina', 'Satwa', 'Deira', 'Naif',
     'Karama', 'Mirdif', 'Rashidiya', 'Jumeirah', 'Jumeriah', 'Arjan', 'Tecom',
     'Greens', 'Views', 'Springs', 'Meadows', 'Lakes', 'Remraam', 'Mudon', 'Layan',
@@ -171,7 +147,6 @@ function extractAreaName(address) {
     .replace(/\b(Dubai|United Arab Emirates|UAE)\b/gi, '')
     .trim();
 
-  // Fallback: split by common delimiters and pick the most meaningful segment
   const parts = cleaned.split(/\s*[-,]\s*/).map(s => s.trim()).filter(Boolean);
   const filtered = parts.filter(p =>
     !p.match(/^(flat|apartment|villa|building|tower|floor|road|street|st)\b/i) &&
@@ -180,7 +155,6 @@ function extractAreaName(address) {
   );
 
   if (filtered.length > 0) {
-    // Prefer a part that looks like an area name (starts with letter, reasonable length)
     const areaPart = filtered.find(p => p.match(/^[A-Za-z]/) && p.length >= 3 && p.length <= 30);
     return areaPart || filtered[0];
   }
@@ -188,25 +162,37 @@ function extractAreaName(address) {
   return parts[0] || address;
 }
 
+function centroidNear(centroidLat, centroidLon, lat, lon) {
+  if (!centroidLat || !centroidLon || !lat || !lon) return false;
+  return haversineKm(centroidLat, centroidLon, lat, lon) <= GEO_RADIUS_KM;
+}
+
 export function clusterOrders(orders) {
   const clusters = [];
 
   for (const order of orders) {
-    const time = parseTime(order);
-
     let matched = false;
     for (const cluster of clusters) {
-      const representative = cluster.orders[0];
-      if (
-        pickupsNear(representative, order) &&
-        dropoffsNear(representative, order) &&
-        timesClose(cluster.avgTime, time)
-      ) {
+      const pickupMatch = cluster.pickupCentroidLat
+        ? centroidNear(cluster.pickupCentroidLat, cluster.pickupCentroidLon, order.maidLat, order.maidLong)
+        : areasMatch(getPickupArea(cluster.orders[0]), getPickupArea(order));
+      const dropoffMatch = cluster.dropoffCentroidLat
+        ? centroidNear(cluster.dropoffCentroidLat, cluster.dropoffCentroidLon, order.clientLat, order.clientLong)
+        : areasMatch(getDropoffArea(cluster.orders[0]), getDropoffArea(order));
+
+      if (pickupMatch && dropoffMatch) {
         cluster.orders.push(order);
-        const validTimes = cluster.orders.map(parseTime).filter(t => t !== null);
-        cluster.avgTime = validTimes.length > 0
-          ? Math.round(validTimes.reduce((a, b) => a + b, 0) / validTimes.length)
-          : null;
+        // Recalculate centroids including new order
+        const pCoords = cluster.orders.filter(o => o.maidLat && o.maidLong);
+        if (pCoords.length > 0) {
+          cluster.pickupCentroidLat = pCoords.reduce((s, o) => s + o.maidLat, 0) / pCoords.length;
+          cluster.pickupCentroidLon = pCoords.reduce((s, o) => s + o.maidLong, 0) / pCoords.length;
+        }
+        const dCoords = cluster.orders.filter(o => o.clientLat && o.clientLong);
+        if (dCoords.length > 0) {
+          cluster.dropoffCentroidLat = dCoords.reduce((s, o) => s + o.clientLat, 0) / dCoords.length;
+          cluster.dropoffCentroidLon = dCoords.reduce((s, o) => s + o.clientLong, 0) / dCoords.length;
+        }
         matched = true;
         break;
       }
@@ -216,7 +202,10 @@ export function clusterOrders(orders) {
       clusters.push({
         pickupArea: getPickupArea(order),
         dropoffArea: getDropoffArea(order),
-        avgTime: time,
+        pickupCentroidLat: order.maidLat || null,
+        pickupCentroidLon: order.maidLong || null,
+        dropoffCentroidLat: order.clientLat || null,
+        dropoffCentroidLon: order.clientLong || null,
         orders: [order],
       });
     }
@@ -232,13 +221,9 @@ export function clusterOrders(orders) {
       || cluster.orders[0].clientArea
       || 'Unknown Dropoff';
 
-    // Short area name for route label (header), full address for inside card
     const shortPickup = normalizeDisplayArea(extractAreaName(fullPickup));
     const shortDropoff = normalizeDisplayArea(extractAreaName(fullDropoff));
 
-    const timeWindow = formatTimeWindow(cluster.avgTime);
-
-    // Stable ID based on sorted order IDs so it doesn't shift when other clusters change
     const stableId = cluster.orders
       .map(o => o.id || o.contractId)
       .sort()
@@ -246,6 +231,10 @@ export function clusterOrders(orders) {
 
     const validTimes = cluster.orders.map(parseTime).filter(t => t !== null);
     const earliestTime = validTimes.length > 0 ? Math.min(...validTimes) : null;
+    const avgTime = validTimes.length > 0
+      ? Math.round(validTimes.reduce((a, b) => a + b, 0) / validTimes.length)
+      : null;
+    const timeWindow = formatTimeWindow(avgTime);
 
     return {
       id: `cluster-${stableId}`,
@@ -253,7 +242,7 @@ export function clusterOrders(orders) {
       pickupLabel: fullPickup,
       dropoffLabel: fullDropoff,
       timeWindow,
-      avgTime: cluster.avgTime,
+      avgTime,
       earliestTime,
       orders: cluster.orders,
       seatCount: cluster.orders.length,

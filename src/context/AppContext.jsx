@@ -403,15 +403,117 @@ function saveToStorage(key, value) {
 
 // Reverse geocode cache — persisted to localStorage so it survives page refreshes
 const GEO_CACHE_STORAGE_KEY = 'carlift_geocache';
-const GEO_CACHE_VERSION = 2; // bump to invalidate old cache with "Al " prefixed values
-const geoCacheRaw = loadFromStorage(GEO_CACHE_STORAGE_KEY, {});
-const geoCache = (geoCacheRaw._v === GEO_CACHE_VERSION) ? geoCacheRaw : { _v: GEO_CACHE_VERSION };
+const geoCache = loadFromStorage(GEO_CACHE_STORAGE_KEY, {});
+// Clean up any stale metadata keys
+delete geoCache._v;
 function persistGeoCache() {
   saveToStorage(GEO_CACHE_STORAGE_KEY, geoCache);
 }
-if (geoCacheRaw._v !== GEO_CACHE_VERSION) persistGeoCache(); // clear stale cache
 // Track which order+field combos have already been geocoded so we don't redo them
 const geocodedKeys = new Set();
+
+// ── Local coord→area lookup: instant, no API, covers all major UAE areas ──
+const AREA_CENTROIDS = [
+  { name: 'Satwa', lat: 25.2220, lon: 55.2697 },
+  { name: 'Deira', lat: 25.2744, lon: 55.3322 },
+  { name: 'Bur Dubai', lat: 25.2518, lon: 55.3005 },
+  { name: 'Karama', lat: 25.2451, lon: 55.3050 },
+  { name: 'Rigga', lat: 25.2647, lon: 55.3260 },
+  { name: 'Naif', lat: 25.2694, lon: 55.3168 },
+  { name: 'Mankhool', lat: 25.2485, lon: 55.2920 },
+  { name: 'Barsha', lat: 25.1130, lon: 55.1905 },
+  { name: 'Quoz', lat: 25.1519, lon: 55.2240 },
+  { name: 'JLT', lat: 25.0775, lon: 55.1425 },
+  { name: 'JVC', lat: 25.0568, lon: 55.1583 },
+  { name: 'JVT', lat: 25.0620, lon: 55.1510 },
+  { name: 'Dubai Marina', lat: 25.0805, lon: 55.1395 },
+  { name: 'JBR', lat: 25.0785, lon: 55.1310 },
+  { name: 'Downtown', lat: 25.1972, lon: 55.2744 },
+  { name: 'Business Bay', lat: 25.1860, lon: 55.2660 },
+  { name: 'DIFC', lat: 25.2100, lon: 55.2790 },
+  { name: 'Mirdif', lat: 25.2225, lon: 55.4221 },
+  { name: 'International City', lat: 25.1608, lon: 55.4033 },
+  { name: 'Silicon Oasis', lat: 25.1268, lon: 55.3800 },
+  { name: 'Dubai Hills', lat: 25.1325, lon: 55.2440 },
+  { name: 'Arabian Ranches', lat: 25.0620, lon: 55.2680 },
+  { name: 'Jumeirah', lat: 25.2000, lon: 55.2450 },
+  { name: 'Palm Jumeirah', lat: 25.1140, lon: 55.1380 },
+  { name: 'Creek Harbour', lat: 25.1950, lon: 55.3300 },
+  { name: 'Sports City', lat: 25.0470, lon: 55.2240 },
+  { name: 'Discovery Gardens', lat: 25.0385, lon: 55.1352 },
+  { name: 'Damac Hills', lat: 25.0360, lon: 55.2330 },
+  { name: 'Town Square', lat: 25.0250, lon: 55.2520 },
+  { name: 'Rashidiya', lat: 25.2350, lon: 55.3960 },
+  { name: 'Nahda', lat: 25.2950, lon: 55.3730 },
+  { name: 'Mamzar', lat: 25.2890, lon: 55.3500 },
+  { name: 'Muhaisnah', lat: 25.2700, lon: 55.4000 },
+  { name: 'Qusais', lat: 25.2610, lon: 55.3840 },
+  { name: 'Warqa', lat: 25.2100, lon: 55.4180 },
+  { name: 'Twar', lat: 25.2430, lon: 55.3740 },
+  { name: 'Muteena', lat: 25.2800, lon: 55.3200 },
+  { name: 'Garhoud', lat: 25.2500, lon: 55.3450 },
+  { name: 'Oud Metha', lat: 25.2350, lon: 55.3100 },
+  { name: 'Wasl', lat: 25.2150, lon: 55.2700 },
+  { name: 'Safa', lat: 25.1870, lon: 55.2450 },
+  { name: 'Tecom', lat: 25.0980, lon: 55.1730 },
+  { name: 'Greens', lat: 25.0900, lon: 55.1700 },
+  { name: 'Springs', lat: 25.0800, lon: 55.1850 },
+  { name: 'Meadows', lat: 25.0850, lon: 55.1600 },
+  { name: 'Furjan', lat: 25.0350, lon: 55.1500 },
+  { name: 'Remraam', lat: 25.0580, lon: 55.2900 },
+  { name: 'Mudon', lat: 25.0460, lon: 55.2800 },
+  { name: 'Villanova', lat: 25.0550, lon: 55.2580 },
+  { name: 'Nad Al Sheba', lat: 25.1700, lon: 55.3150 },
+  { name: 'Sobha Hartland', lat: 25.1900, lon: 55.3100 },
+  { name: 'Arjan', lat: 25.0660, lon: 55.2370 },
+  { name: 'Barsha Heights', lat: 25.1000, lon: 55.1760 },
+  { name: 'Emirates Hills', lat: 25.0870, lon: 55.1540 },
+  { name: 'DIP', lat: 25.0020, lon: 55.1550 },
+  { name: 'Jebel Ali', lat: 25.0100, lon: 55.1000 },
+  { name: 'Abu Hail', lat: 25.2780, lon: 55.3400 },
+  { name: 'Umm Suqeim', lat: 25.1500, lon: 55.2100 },
+  { name: 'Umm Ramool', lat: 25.2280, lon: 55.3580 },
+  { name: 'Jafiliya', lat: 25.2330, lon: 55.2870 },
+  { name: 'Bada', lat: 25.2180, lon: 55.2620 },
+  { name: 'Khail Gate', lat: 25.1450, lon: 55.2350 },
+  { name: 'Motor City', lat: 25.0500, lon: 55.2380 },
+  { name: 'Tilal Al Ghaf', lat: 25.0810, lon: 55.2450 },
+  { name: 'Jumeirah Park', lat: 25.0660, lon: 55.1530 },
+  { name: 'Jumeirah Islands', lat: 25.0700, lon: 55.1570 },
+  { name: 'Jumeirah Garden City', lat: 25.2200, lon: 55.2610 },
+  { name: 'Layan', lat: 25.0900, lon: 55.2450 },
+  { name: 'Sharjah', lat: 25.3463, lon: 55.4209 },
+  { name: 'Ajman', lat: 25.4052, lon: 55.5136 },
+  { name: 'Warsan', lat: 25.1550, lon: 55.4200 },
+  { name: 'Meydan', lat: 25.1650, lon: 55.2980 },
+  { name: 'City Walk', lat: 25.2070, lon: 55.2620 },
+  { name: 'Creek Beach', lat: 25.2050, lon: 55.3350 },
+  { name: 'Reem Island', lat: 24.4970, lon: 54.4060 },
+  { name: 'Saadiyat', lat: 24.5400, lon: 54.4300 },
+  { name: 'Khalifa City', lat: 24.4200, lon: 54.5800 },
+  { name: 'Yas Island', lat: 24.4900, lon: 54.6100 },
+];
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function nearestArea(lat, lon) {
+  if (!lat || !lon) return null;
+  let best = null;
+  let bestDist = Infinity;
+  for (const c of AREA_CENTROIDS) {
+    const d = haversineKm(lat, lon, c.lat, c.lon);
+    if (d < bestDist) { bestDist = d; best = c.name; }
+  }
+  return bestDist <= 8 ? best : null;
+}
 // Prevent concurrent fetchOrders from overlapping geocode work
 let isFetchingOrders = false;
 
@@ -502,21 +604,13 @@ const KNOWN_AREAS = [
 const KNOWN_AREAS_SORTED = [...KNOWN_AREAS].sort((a, b) => b.length - a.length);
 
 /**
- * Strip "Al " / "The " prefix so "Al Barsha" and "Barsha" group together.
- */
-function stripAreaPrefix(name) {
-  if (!name) return name;
-  return name.replace(/^(Al |The )/i, '').trim();
-}
-
-/**
- * Scan raw text for a known Dubai area name. Returns the longest match (prefix-stripped) or null.
+ * Scan raw text for a known Dubai area name. Returns the longest match or null.
  */
 function findKnownArea(text) {
   if (!text) return null;
   const upper = text.toUpperCase();
   for (const area of KNOWN_AREAS_SORTED) {
-    if (upper.includes(area.toUpperCase())) return stripAreaPrefix(area);
+    if (upper.includes(area.toUpperCase())) return area;
   }
   return null;
 }
@@ -737,33 +831,31 @@ export function AppProvider({ children }) {
       if (coords) { clientLat = coords.lat; clientLong = coords.lon; }
     }
 
-    // For display: full cleaned address. For clustering: just the area name.
-    // Try findKnownArea first (on raw text, then cleaned text) for a short area label.
+    // Resolve area: text extraction → known area scan → coord-based nearest area
     const maidKnown = findKnownArea(raw.maidAddress) || findKnownArea(maidAddr);
     const clientKnown = findKnownArea(raw.ClientAddress) || findKnownArea(clientAddr);
+    const maidFromCoords = nearestArea(maidLat, maidLong);
+    const clientFromCoords = nearestArea(clientLat, clientLong);
 
-    // Full text for display (detailed location shown on card)
-    const maidDisplay = maidAddr || maidKnown || 'Location N/A';
-    const clientDisplay = clientAddr || clientKnown || 'Location N/A';
-
-    // Short area name for clustering/grouping (prefer known area, fallback to full)
-    const maidAreaShort = maidKnown || maidAddr || 'N/A';
-    const clientAreaShort = clientKnown || clientAddr || 'N/A';
+    const maidArea = maidKnown || maidAddr || maidFromCoords || 'N/A';
+    const clientArea = clientKnown || clientAddr || clientFromCoords || 'N/A';
+    const maidDisplay = maidAddr || maidKnown || maidFromCoords || 'Location N/A';
+    const clientDisplay = clientAddr || clientKnown || clientFromCoords || 'Location N/A';
 
     return {
       id: raw.id || String(raw.contractId),
       contractId: raw.contractId ? String(raw.contractId) : raw.id,
       clientName: raw.clientName || 'N/A',
       clientLocation: clientDisplay,
-      clientArea: clientAreaShort,
+      clientArea: clientArea,
       clientId: raw.clientId || '',
       housemaidName: raw.housemaidName || 'N/A',
       housemaidPhone: raw.housemaidPhoneNumber && raw.housemaidPhoneNumber !== '***' ? raw.housemaidPhoneNumber : 'Phone: N/A',
       housemaidStatus: raw.housemaidStatus || '',
       housemaidId: raw.housemaidId || '',
       maidLocation: maidDisplay,
-      pickupArea: maidAreaShort,
-      dropoffArea: clientAreaShort,
+      pickupArea: maidArea,
+      dropoffArea: clientArea,
       creationDate: raw.creationDate || '',
       transferDate: raw.transferDate || '',
       typeOfTheContractLabel: raw.typeOfTheContractLabel || '',
@@ -814,25 +906,12 @@ export function AppProvider({ children }) {
           const oid = o.id || o.contractId;
           const sbVersion = sbMap.get(oid);
           if (!sbVersion) return o;
-          // Pick the better (non-N/A) value between API and Supabase
-          const best = (apiVal, sbVal) => {
-            const apiOk = apiVal && apiVal !== 'N/A' && apiVal !== 'Location N/A';
-            const sbOk = sbVal && sbVal !== 'N/A' && sbVal !== 'Location N/A';
-            if (apiOk) return apiVal;
-            if (sbOk) return sbVal;
-            return apiVal;
-          };
           return {
             ...sbVersion,
             maidLat: o.maidLat ?? sbVersion.maidLat,
             maidLong: o.maidLong ?? sbVersion.maidLong,
             clientLat: o.clientLat ?? sbVersion.clientLat,
             clientLong: o.clientLong ?? sbVersion.clientLong,
-            pickupArea: best(o.pickupArea, sbVersion.pickupArea),
-            dropoffArea: best(o.dropoffArea, sbVersion.dropoffArea),
-            clientArea: best(o.clientArea, sbVersion.clientArea),
-            maidLocation: best(o.maidLocation, sbVersion.maidLocation),
-            clientLocation: best(o.clientLocation, sbVersion.clientLocation),
           };
         });
 
@@ -849,21 +928,23 @@ export function AppProvider({ children }) {
         sbUpsertOrders(allProcessed, 'api').catch(err => console.error('Supabase upsert orders failed:', err));
       }
 
-      // ── Apply geocode cache (localStorage-backed, so instant even after refresh) ──
+      // ── Apply geocode cache, then local coord lookup as instant fallback ──
       for (const order of finalOrders) {
         if (needsGeo(order.pickupArea) && order.maidLat && order.maidLong) {
           const cacheKey = `${order.maidLat.toFixed(4)},${order.maidLong.toFixed(4)}`;
-          if (geoCache[cacheKey]) {
-            order.maidLocation = geoCache[cacheKey];
-            order.pickupArea = geoCache[cacheKey];
+          const resolved = geoCache[cacheKey] || nearestArea(order.maidLat, order.maidLong);
+          if (resolved) {
+            order.maidLocation = resolved;
+            order.pickupArea = resolved;
           }
         }
         if (needsGeo(order.dropoffArea) && order.clientLat && order.clientLong) {
           const cacheKey = `${order.clientLat.toFixed(4)},${order.clientLong.toFixed(4)}`;
-          if (geoCache[cacheKey]) {
-            order.clientLocation = geoCache[cacheKey];
-            order.clientArea = geoCache[cacheKey];
-            order.dropoffArea = geoCache[cacheKey];
+          const resolved = geoCache[cacheKey] || nearestArea(order.clientLat, order.clientLong);
+          if (resolved) {
+            order.clientLocation = resolved;
+            order.clientArea = resolved;
+            order.dropoffArea = resolved;
           }
         }
       }
