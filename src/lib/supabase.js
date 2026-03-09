@@ -74,23 +74,40 @@ export async function fetchFollowUpData() {
   if (error) throw error;
   const result = {};
   for (const row of (data || [])) {
-    result[row.order_id] = {
-      priority: row.priority || 'Normal',
-      1: row.day_1 || {},
-      2: row.day_2 || {},
-      3: row.day_3 || {},
-    };
+    // Prefer all_days JSONB (has all days including 4+), fallback to individual columns
+    if (row.all_days && Object.keys(row.all_days).length > 0) {
+      result[row.order_id] = {
+        priority: row.priority || 'Normal',
+        ...row.all_days,
+      };
+    } else {
+      result[row.order_id] = {
+        priority: row.priority || 'Normal',
+        1: row.day_1 || {},
+        2: row.day_2 || {},
+        3: row.day_3 || {},
+      };
+    }
   }
   return result;
 }
 
-export async function upsertFollowUpData(orderId, updates) {
-  // Build the row to upsert — only include day fields that are in updates
+export async function upsertFollowUpData(orderId, fullData) {
+  // fullData is the complete merged follow-up data for this order (priority + all days)
   const row = { order_id: orderId, updated_at: new Date().toISOString() };
-  if (updates.priority !== undefined) row.priority = updates.priority;
-  if (updates[1] !== undefined) row.day_1 = updates[1];
-  if (updates[2] !== undefined) row.day_2 = updates[2];
-  if (updates[3] !== undefined) row.day_3 = updates[3];
+  if (fullData.priority !== undefined) row.priority = fullData.priority;
+  // Write individual day columns for days 1-3 (backward compat)
+  if (fullData[1] !== undefined) row.day_1 = fullData[1];
+  if (fullData[2] !== undefined) row.day_2 = fullData[2];
+  if (fullData[3] !== undefined) row.day_3 = fullData[3];
+  // Write ALL days (including 4+) to the all_days JSONB column
+  const allDays = {};
+  for (const key of Object.keys(fullData)) {
+    if (key === 'priority') continue;
+    const num = Number(key);
+    if (!isNaN(num) && num >= 1) allDays[num] = fullData[num];
+  }
+  row.all_days = allDays;
 
   const { error } = await supabase
     .from('follow_up_data')
@@ -154,6 +171,14 @@ export async function updateHistoryOrder(orderId, orderData) {
   if (error) throw error;
 }
 
+export async function deleteHistoryOrder(orderId) {
+  const { error } = await supabase
+    .from('history_orders')
+    .delete()
+    .eq('order_id', orderId);
+  if (error) throw error;
+}
+
 // ── Orders (API + manual) ───────────────────────────────────────
 
 export async function fetchOrders() {
@@ -207,6 +232,95 @@ export async function deleteOrderFromDb(orderId) {
   if (error) throw error;
 }
 
+// ── Drivers ─────────────────────────────────────────────────────
+
+export async function fetchDrivers() {
+  const { data, error } = await supabase
+    .from('drivers')
+    .select('*')
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data || []).map(row => row.driver_data);
+}
+
+export async function upsertDrivers(drivers) {
+  if (!drivers.length) return;
+  const rows = drivers.map(d => ({
+    driver_id: d.id,
+    driver_data: d,
+    updated_at: new Date().toISOString(),
+  }));
+  const { error } = await supabase
+    .from('drivers')
+    .upsert(rows, { onConflict: 'driver_id' });
+  if (error) throw error;
+}
+
+export async function upsertDriver(driver) {
+  const { error } = await supabase
+    .from('drivers')
+    .upsert({
+      driver_id: driver.id,
+      driver_data: driver,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'driver_id' });
+  if (error) throw error;
+}
+
+export async function deleteDriverFromDb(driverId) {
+  const { error } = await supabase
+    .from('drivers')
+    .delete()
+    .eq('driver_id', driverId);
+  if (error) throw error;
+}
+
+// ── Trip Assignments ────────────────────────────────────────────
+
+export async function fetchTripAssignments() {
+  const { data, error } = await supabase
+    .from('trip_assignments')
+    .select('*');
+  if (error) throw error;
+  const result = {};
+  for (const row of (data || [])) {
+    result[row.order_id] = row.assignment_data;
+  }
+  return result;
+}
+
+export async function upsertTripAssignment(orderId, assignmentData) {
+  const { error } = await supabase
+    .from('trip_assignments')
+    .upsert({
+      order_id: orderId,
+      assignment_data: assignmentData,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'order_id' });
+  if (error) throw error;
+}
+
+export async function deleteTripAssignment(orderId) {
+  const { error } = await supabase
+    .from('trip_assignments')
+    .delete()
+    .eq('order_id', orderId);
+  if (error) throw error;
+}
+
+export async function upsertTripAssignmentsBulk(assignments) {
+  const rows = Object.entries(assignments).map(([orderId, data]) => ({
+    order_id: orderId,
+    assignment_data: data,
+    updated_at: new Date().toISOString(),
+  }));
+  if (!rows.length) return;
+  const { error } = await supabase
+    .from('trip_assignments')
+    .upsert(rows, { onConflict: 'order_id' });
+  if (error) throw error;
+}
+
 // ── Realtime Subscriptions ──────────────────────────────────────
 
 export function subscribeToFollowUp(onChangeCallback) {
@@ -230,6 +344,22 @@ export function subscribeToHistory(onChangeCallback) {
   const channel = supabase
     .channel('history-changes')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'history_orders' }, onChangeCallback)
+    .subscribe();
+  return () => supabase.removeChannel(channel);
+}
+
+export function subscribeToDrivers(onChangeCallback) {
+  const channel = supabase
+    .channel('drivers-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'drivers' }, onChangeCallback)
+    .subscribe();
+  return () => supabase.removeChannel(channel);
+}
+
+export function subscribeToTripAssignments(onChangeCallback) {
+  const channel = supabase
+    .channel('trip-assignments-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'trip_assignments' }, onChangeCallback)
     .subscribe();
   return () => supabase.removeChannel(channel);
 }

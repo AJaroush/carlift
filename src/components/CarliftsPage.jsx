@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 
 const EMPTY_FORM = {
@@ -11,6 +11,8 @@ const EMPTY_FORM = {
   price: '',
   reliability: 'Mid',
   active: true,
+  operatingHours: '',
+  scheduleImage: '',
 };
 
 export default function CarliftsPage() {
@@ -42,6 +44,8 @@ export default function CarliftsPage() {
       price: String(driver.price),
       reliability: driver.reliability,
       active: driver.active,
+      operatingHours: driver.operatingHours || '',
+      scheduleImage: driver.scheduleImage || '',
     });
     setShowModal(true);
   };
@@ -92,6 +96,7 @@ export default function CarliftsPage() {
               <th>COVERAGE ROUTE</th>
               <th>PRICE</th>
               <th>RELIABILITY</th>
+              <th>OPERATING HOURS</th>
               <th>ACTIVE</th>
               <th>ACTIONS</th>
             </tr>
@@ -104,6 +109,7 @@ export default function CarliftsPage() {
                 onToggle={toggleDriver}
                 onEdit={openEditModal}
                 onDelete={deleteDriver}
+                onUpdate={updateDriver}
               />
             ))}
           </tbody>
@@ -159,6 +165,32 @@ export default function CarliftsPage() {
                     <option value="Low">Low</option>
                   </select>
                 </div>
+                <div className="form-group form-group-full">
+                  <label>Operating Hours</label>
+                  <input name="operatingHours" value={form.operatingHours} onChange={handleChange} placeholder="e.g. 6:00 AM - 10:00 PM, or Sun-Thu 7AM-9PM" />
+                </div>
+                <div className="form-group form-group-full">
+                  <label>Schedule Image</label>
+                  <div className="schedule-image-input">
+                    {form.scheduleImage && (
+                      <div className="schedule-image-preview-modal">
+                        <img src={form.scheduleImage} alt="Schedule" />
+                        <button type="button" className="remove-image-btn" onClick={() => setForm(prev => ({ ...prev, scheduleImage: '' }))}>Remove</button>
+                      </div>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = (ev) => setForm(prev => ({ ...prev, scheduleImage: ev.target.result }));
+                        reader.readAsDataURL(file);
+                      }}
+                    />
+                  </div>
+                </div>
               </div>
               <div className="modal-actions">
                 <button type="button" className="btn-cancel" onClick={() => setShowModal(false)}>Cancel</button>
@@ -174,10 +206,30 @@ export default function CarliftsPage() {
   );
 }
 
-function DriverRow({ driver, onToggle, onEdit, onDelete }) {
+function DriverRow({ driver, onToggle, onEdit, onDelete, onUpdate }) {
   const reliabilityClass =
     driver.reliability === 'High' ? 'high' :
     driver.reliability === 'Mid' ? 'mid' : 'low';
+
+  const [editingHours, setEditingHours] = useState(false);
+  const [hoursValue, setHoursValue] = useState(driver.operatingHours || '');
+  const [showImagePopup, setShowImagePopup] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const saveHours = () => {
+    onUpdate(driver.id, { operatingHours: hoursValue });
+    setEditingHours(false);
+  };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      onUpdate(driver.id, { scheduleImage: ev.target.result });
+    };
+    reader.readAsDataURL(file);
+  };
 
   return (
     <tr>
@@ -219,6 +271,48 @@ function DriverRow({ driver, onToggle, onEdit, onDelete }) {
       </td>
       <td>
         <span className={`reliability-badge ${reliabilityClass}`}>{driver.reliability}</span>
+      </td>
+      <td>
+        <div className="operating-hours-cell">
+          {editingHours ? (
+            <div className="hours-edit-inline">
+              <input
+                className="hours-input"
+                value={hoursValue}
+                onChange={(e) => setHoursValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') saveHours(); if (e.key === 'Escape') setEditingHours(false); }}
+                placeholder="e.g. 6AM-10PM"
+                autoFocus
+              />
+              <button className="hours-save-btn" onClick={saveHours}>Save</button>
+            </div>
+          ) : (
+            <div className="hours-display" onClick={() => { setHoursValue(driver.operatingHours || ''); setEditingHours(true); }}>
+              {driver.operatingHours || <span className="hours-placeholder">Click to set</span>}
+            </div>
+          )}
+          <div className="schedule-image-actions">
+            {driver.scheduleImage ? (
+              <>
+                <button className="view-schedule-btn" onClick={() => setShowImagePopup(true)}>View</button>
+                <button className="remove-schedule-btn" onClick={() => onUpdate(driver.id, { scheduleImage: '' })}>X</button>
+              </>
+            ) : (
+              <button className="upload-schedule-btn" onClick={() => fileInputRef.current?.click()}>
+                Upload
+              </button>
+            )}
+            <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageUpload} />
+          </div>
+          {showImagePopup && driver.scheduleImage && (
+            <div className="schedule-popup-overlay" onClick={() => setShowImagePopup(false)}>
+              <div className="schedule-popup" onClick={(e) => e.stopPropagation()}>
+                <button className="schedule-popup-close" onClick={() => setShowImagePopup(false)}>X</button>
+                <img src={driver.scheduleImage} alt="Driver schedule" />
+              </div>
+            </div>
+          )}
+        </div>
       </td>
       <td>
         <div

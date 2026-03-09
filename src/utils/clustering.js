@@ -29,18 +29,76 @@ function parseTime(order) {
   return h * 60 + m; // minutes since midnight
 }
 
+// Normalize area name: strip "Al "/"Al-" prefix, common spelling variants
+function normalizeArea(name) {
+  let n = name.trim().toLowerCase();
+  // Strip leading "al " or "al-"
+  n = n.replace(/^al[\s-]+/, '');
+  // Common spelling unifications
+  n = n
+    .replace(/\bsatwa\b/g, 'satwa')
+    .replace(/\bsawta\b/g, 'satwa')
+    .replace(/\bqouz\b/g, 'quoz')
+    .replace(/\bqoz\b/g, 'quoz')
+    .replace(/\bbarsha\b/g, 'barsha')
+    .replace(/\bmamzar\b/g, 'mamzar')
+    .replace(/\bnahda\b/g, 'nahda')
+    .replace(/\btwar\b/g, 'twar')
+    .replace(/\bwarqa\b/g, 'warqa')
+    .replace(/\bkarama\b/g, 'karama')
+    .replace(/\bmuhaisnah\b/g, 'muhaisnah')
+    .replace(/\bmuteena\b/g, 'muteena')
+    .replace(/\bmankhool\b/g, 'mankhool')
+    .replace(/\brashidiya\b/g, 'rashidiya')
+    .replace(/\bmirdif\b/g, 'mirdif');
+  return n;
+}
+
+// Display-friendly normalization: unify spelling but keep title case
+function normalizeDisplayArea(name) {
+  if (!name) return name;
+  let n = name.trim();
+  // Remove leading "Al "/"Al-" for unification, then re-add as "Al " for display
+  const hadAl = /^al[\s-]+/i.test(n);
+  n = n.replace(/^al[\s-]+/i, '');
+  // Fix common spelling variants (case-insensitive replace, preserve title case)
+  const fixes = [
+    [/\bsawta\b/i, 'Satwa'],
+    [/\bsatwa\b/i, 'Satwa'],
+    [/\bqouz\b/i, 'Quoz'],
+    [/\bqoz\b/i, 'Quoz'],
+    [/\bbarsha\b/i, 'Barsha'],
+    [/\bmamzar\b/i, 'Mamzar'],
+    [/\bnahda\b/i, 'Nahda'],
+    [/\btwar\b/i, 'Twar'],
+    [/\bwarqa\b/i, 'Warqa'],
+    [/\bkarama\b/i, 'Karama'],
+    [/\bmuhaisnah\b/i, 'Muhaisnah'],
+    [/\bmuteena\b/i, 'Muteena'],
+    [/\bmankhool\b/i, 'Mankhool'],
+    [/\brashidiya\b/i, 'Rashidiya'],
+    [/\bmirdif\b/i, 'Mirdif'],
+  ];
+  for (const [re, replacement] of fixes) {
+    n = n.replace(re, replacement);
+  }
+  return n;
+}
+
 function getPickupArea(order) {
-  return (order.pickupArea || order.maidLocation || order.typeOfTheContractLabel || 'Unknown').trim().toLowerCase();
+  return normalizeArea(order.pickupArea || order.maidLocation || order.typeOfTheContractLabel || 'Unknown');
 }
 
 function getDropoffArea(order) {
-  return (order.dropoffArea || order.clientLocation || order.clientArea || 'Unknown').trim().toLowerCase();
+  return normalizeArea(order.dropoffArea || order.clientLocation || order.clientArea || 'Unknown');
 }
 
 function areasMatch(a, b) {
-  if (a === b) return true;
-  const wordsA = a.split(/[,\s]+/).filter(Boolean);
-  const wordsB = b.split(/[,\s]+/).filter(Boolean);
+  const na = normalizeArea(a);
+  const nb = normalizeArea(b);
+  if (na === nb) return true;
+  const wordsA = na.split(/[,\s]+/).filter(Boolean);
+  const wordsB = nb.split(/[,\s]+/).filter(Boolean);
   return wordsA.some(w => w.length > 2 && wordsB.includes(w));
 }
 
@@ -175,8 +233,8 @@ export function clusterOrders(orders) {
       || 'Unknown Dropoff';
 
     // Short area name for route label (header), full address for inside card
-    const shortPickup = extractAreaName(fullPickup);
-    const shortDropoff = extractAreaName(fullDropoff);
+    const shortPickup = normalizeDisplayArea(extractAreaName(fullPickup));
+    const shortDropoff = normalizeDisplayArea(extractAreaName(fullDropoff));
 
     const timeWindow = formatTimeWindow(cluster.avgTime);
 

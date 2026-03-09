@@ -8,25 +8,48 @@ export default function WaitingListPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
 
-  const trips = useMemo(() => clusterOrders(waitingOrders), [waitingOrders]);
+  // Filter out snoozed orders (whose snooze time hasn't passed yet)
+  const activeOrders = useMemo(() => {
+    const now = new Date().toISOString();
+    return waitingOrders.filter(o => !o.snoozedUntil || o.snoozedUntil <= now);
+  }, [waitingOrders]);
+
+  const snoozedOrders = useMemo(() => {
+    const now = new Date().toISOString();
+    return waitingOrders.filter(o => o.snoozedUntil && o.snoozedUntil > now);
+  }, [waitingOrders]);
+
+  const trips = useMemo(() => clusterOrders(activeOrders), [activeOrders]);
+
+  // Sort: trips with ALL orders "can't be served" go to bottom
+  const sortedTrips = useMemo(() => {
+    return [...trips].sort((a, b) => {
+      const aAll = a.orders.every(o => o.cannotBeServed);
+      const bAll = b.orders.every(o => o.cannotBeServed);
+      if (aAll && !bAll) return 1;
+      if (!aAll && bAll) return -1;
+      return 0;
+    });
+  }, [trips]);
 
   const filteredTrips = useMemo(() => {
-    if (!searchQuery) return trips;
+    if (!searchQuery) return sortedTrips;
     const q = searchQuery.toLowerCase();
-    return trips.filter(trip =>
+    return sortedTrips.filter(trip =>
       trip.routeLabel.toLowerCase().includes(q) ||
       trip.orders.some(o =>
         o.clientName?.toLowerCase().includes(q) ||
         o.housemaidName?.toLowerCase().includes(q)
       )
     );
-  }, [trips, searchQuery]);
+  }, [sortedTrips, searchQuery]);
 
   const stats = useMemo(() => ({
-    totalOrders: waitingOrders.length,
+    totalOrders: activeOrders.length,
     totalTrips: trips.length,
     totalSeats: trips.reduce((sum, t) => sum + t.seatCount, 0),
-  }), [waitingOrders, trips]);
+    snoozedCount: snoozedOrders.length,
+  }), [activeOrders, trips, snoozedOrders]);
 
   const handleAddOrder = (order) => {
     addManualOrder(order);
@@ -49,6 +72,14 @@ export default function WaitingListPage() {
           <span className="wl-stat">
             <strong>{stats.totalSeats}</strong> seats needed
           </span>
+          {stats.snoozedCount > 0 && (
+            <>
+              <span className="wl-stat-divider">|</span>
+              <span className="wl-stat" style={{ color: '#F59E0B' }}>
+                <strong>{stats.snoozedCount}</strong> snoozed
+              </span>
+            </>
+          )}
           <button className="add-order-btn" onClick={() => setShowAddForm(true)}>
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path d="M7 1.75v10.5M1.75 7h10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>

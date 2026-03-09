@@ -44,9 +44,24 @@ function minutesToTime(mins) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
+function SnoozePopover({ onSnooze, onClose }) {
+  const [date, setDate] = useState('');
+  return (
+    <div className="snooze-popover" onClick={e => e.stopPropagation()}>
+      <label className="snooze-label">Snooze until:</label>
+      <input type="datetime-local" className="snooze-input" value={date} onChange={e => setDate(e.target.value)} />
+      <div className="snooze-actions">
+        <button className="snooze-cancel" onClick={onClose}>Cancel</button>
+        <button className="snooze-confirm" disabled={!date} onClick={() => { onSnooze(new Date(date).toISOString()); onClose(); }}>Snooze</button>
+      </div>
+    </div>
+  );
+}
+
 export default function TripCard({ trip }) {
   const { drivers, confirmOrder, confirmTripDriver, tripAssignments, updateOrder, deleteOrder } = useApp();
   const [editingOrder, setEditingOrder] = useState(null);
+  const [snoozeOrderId, setSnoozeOrderId] = useState(null);
 
   // Check if any order in this trip already has a confirmed assignment (survives re-clustering)
   const existingAssignment = useMemo(() => {
@@ -164,6 +179,21 @@ export default function TripCard({ trip }) {
                     <path d="M1.5 3h9M4.5 3V1.5h3V3M9 3v7.5H3V3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 </button>
+                {!trip.orders[0].cannotBeServed ? (
+                  <button className="cant-serve-btn" onClick={(e) => { e.stopPropagation(); updateOrder(trip.orders[0].id || trip.orders[0].contractId, { cannotBeServed: true }); }} title="Can't be served">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" transform="rotate(45 6 6)"/></svg>
+                    Can't serve
+                  </button>
+                ) : (
+                  <button className="cant-serve-btn active" onClick={(e) => { e.stopPropagation(); updateOrder(trip.orders[0].id || trip.orders[0].contractId, { cannotBeServed: false }); }} title="Mark as servable">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M10 3L4.5 8.5 2 6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    Can serve
+                  </button>
+                )}
+                <button className="snooze-btn" onClick={(e) => { e.stopPropagation(); setSnoozeOrderId(trip.orders[0].id || trip.orders[0].contractId); }} title="Snooze order">
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.1"/><path d="M6 3v3l2 1.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/></svg>
+                  Snooze
+                </button>
               </>
             )}
           </div>
@@ -239,6 +269,18 @@ export default function TripCard({ trip }) {
                                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                                   <path d="M1.5 3h9M4.5 3V1.5h3V3M9 3v7.5H3V3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
                                 </svg>
+                              </button>
+                              {!order.cannotBeServed ? (
+                                <button className="cant-serve-btn" onClick={() => updateOrder(oid, { cannotBeServed: true })} title="Can't be served">
+                                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" transform="rotate(45 6 6)"/></svg>
+                                </button>
+                              ) : (
+                                <button className="cant-serve-btn active" onClick={() => updateOrder(oid, { cannotBeServed: false })} title="Mark as servable">
+                                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M10 3L4.5 8.5 2 6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                </button>
+                              )}
+                              <button className="snooze-btn" onClick={() => setSnoozeOrderId(oid)} title="Snooze order">
+                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.1"/><path d="M6 3v3l2 1.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/></svg>
                               </button>
                             </>
                           )}
@@ -454,6 +496,15 @@ export default function TripCard({ trip }) {
           }}
           onClose={() => setEditingOrder(null)}
         />
+      )}
+
+      {snoozeOrderId && (
+        <div className="modal-overlay" onClick={() => setSnoozeOrderId(null)}>
+          <SnoozePopover
+            onSnooze={(until) => { updateOrder(snoozeOrderId, { snoozedUntil: until }); setSnoozeOrderId(null); }}
+            onClose={() => setSnoozeOrderId(null)}
+          />
+        </div>
       )}
     </div>
   );

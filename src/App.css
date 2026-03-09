@@ -985,6 +985,145 @@
   border-color: #DC2626;
 }
 
+/* Operating Hours Column */
+.operating-hours-cell {
+  min-width: 140px;
+}
+.hours-display {
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #334155;
+  border: 1px solid transparent;
+  transition: all 0.15s;
+}
+.hours-display:hover {
+  background: #F1F5F9;
+  border-color: #CBD5E1;
+}
+.hours-placeholder {
+  color: #94A3B8;
+  font-style: italic;
+}
+.hours-edit-inline {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.hours-input {
+  padding: 4px 8px;
+  border: 1px solid #3B82F6;
+  border-radius: 6px;
+  font-size: 12px;
+  width: 120px;
+  outline: none;
+  font-family: inherit;
+}
+.hours-save-btn {
+  padding: 4px 8px;
+  background: #3B82F6;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.schedule-image-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+.upload-schedule-btn,
+.view-schedule-btn {
+  padding: 2px 8px;
+  background: #F1F5F9;
+  border: 1px solid #CBD5E1;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #3B82F6;
+  cursor: pointer;
+  font-family: inherit;
+}
+.upload-schedule-btn:hover,
+.view-schedule-btn:hover {
+  background: #E2E8F0;
+}
+.remove-schedule-btn {
+  padding: 2px 6px;
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #DC2626;
+  cursor: pointer;
+  font-family: inherit;
+}
+.schedule-popup-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+.schedule-popup {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  max-width: 90vw;
+  max-height: 90vh;
+  position: relative;
+}
+.schedule-popup img {
+  max-width: 100%;
+  max-height: 80vh;
+  border-radius: 8px;
+}
+.schedule-popup-close {
+  position: absolute;
+  top: 8px; right: 8px;
+  background: #F1F5F9;
+  border: none;
+  border-radius: 50%;
+  width: 28px; height: 28px;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.form-group-full {
+  grid-column: 1 / -1;
+}
+.schedule-image-input input[type="file"] {
+  font-size: 12px;
+  margin-top: 6px;
+}
+.schedule-image-preview-modal {
+  margin-bottom: 8px;
+}
+.schedule-image-preview-modal img {
+  max-width: 200px;
+  max-height: 150px;
+  border-radius: 6px;
+  border: 1px solid #E2E8F0;
+}
+.remove-image-btn {
+  display: block;
+  margin-top: 4px;
+  padding: 2px 10px;
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-radius: 4px;
+  color: #DC2626;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
 .more-btn {
   display: flex;
   align-items: center;
@@ -1487,6 +1626,170 @@
   font-size: 12px;
   font-weight: 500;
   text-decoration: none;
+}
+
+/* ===== CAN'T SERVE BUTTON ===== */
+.cant-serve-btn {
+  background: none;
+  border: 1px solid #E2E8F0;
+  color: #94A3B8;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  margin-left: 4px;
+  vertical-align: middle;
+  transition: all 0.15s;
+}
+.cant-serve-btn:hover {
+  color: #EF4444;
+  border-color: #FECACA;
+  background: #FEF2F2;
+}
+.cant-serve-btn.active {
+  color: #16A34A;
+  border-color: #BBF7D0;
+  background: #F0FDF4;
+}
+.cant-serve-btn.active:hover {
+  color: #16A34A;
+  border-color: #86EFAC;
+  background: #DCFCE7;
+}
+
+/* ===== SNOOZE BUTTON ===== */
+.snooze-btn {
+  background: none;
+  border: 1px solid #E2E8F0;
+  color: #94A3B8;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  margin-left: 4px;
+  vertical-align: middle;
+  transition: all 0.15s;
+}
+.snooze-btn:hover {
+  color: #F59E0B;
+  border-color: #FDE68A;
+  background: #FFFBEB;
+}
+
+/* ===== SNOOZE POPOVER ===== */
+.snooze-popover {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.snooze-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+.snooze-input {
+  padding: 8px 12px;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #334155;
+  width: 100%;
+}
+.snooze-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.snooze-cancel {
+  padding: 6px 14px;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  background: #fff;
+  color: #64748B;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.snooze-confirm {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  background: #F59E0B;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.snooze-confirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Snoozed toggle in filter bar */
+.fu-day-filter-btn.snoozed-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #F59E0B;
+  border-color: #FDE68A;
+}
+.fu-day-filter-btn.snoozed-toggle.active {
+  background: #FEF3C7;
+  border-color: #F59E0B;
+  color: #B45309;
+}
+
+/* Snoozed section header */
+.fu-section-dot.snoozed {
+  background: #F59E0B;
+}
+.fu-section-header.snoozed {
+  color: #B45309;
+}
+
+/* Snoozed badge on card */
+.snoozed-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  background: #FEF3C7;
+  color: #B45309;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Unsnooze button */
+.unsnooze-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid #FDE68A;
+  border-radius: 6px;
+  background: #FFFBEB;
+  color: #B45309;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.unsnooze-btn:hover {
+  background: #FEF3C7;
+  border-color: #F59E0B;
 }
 .todo-link:hover {
   text-decoration: underline;

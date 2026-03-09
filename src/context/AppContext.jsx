@@ -17,6 +17,17 @@ import {
   updateOrderInDb,
   deleteOrderFromDb,
   updateHistoryOrder,
+  deleteHistoryOrder,
+  fetchDrivers as sbFetchDrivers,
+  upsertDrivers as sbUpsertDrivers,
+  upsertDriver as sbUpsertDriver,
+  deleteDriverFromDb,
+  subscribeToDrivers,
+  fetchTripAssignments as sbFetchTripAssignments,
+  upsertTripAssignment,
+  upsertTripAssignmentsBulk,
+  deleteTripAssignment,
+  subscribeToTripAssignments,
 } from '../lib/supabase';
 
 const AppContext = createContext(null);
@@ -243,103 +254,136 @@ const MOCK_ORDERS = [
   },
 ];
 
+const DRIVER_VERSION = 2; // Bump to force localStorage reload
+
 const INITIAL_DRIVERS = [
-  {
-    id: 'DRV-001',
-    name: 'Ahmed Khan',
-    phone: '+971 50 123 4567',
-    vehicle: 'Toyota Hiace (14 Seater)',
-    plate: 'DXB A 12345',
-    pickupArea: 'JBR, Marina',
-    dropArea: 'JLT, Media City',
-    price: 120,
-    reliability: 'High',
-    active: true,
-  },
-  {
-    id: 'DRV-002',
-    name: 'Mohammed Ali',
-    phone: '+971 55 987 6543',
-    vehicle: 'Nissan Urvan (13 Seater)',
-    plate: 'DXB K 98765',
-    pickupArea: 'Deira',
-    dropArea: 'Bur Dubai, Karama',
-    price: 100,
-    reliability: 'Mid',
-    active: true,
-  },
-  {
-    id: 'DRV-003',
-    name: 'Raj Patel',
-    phone: '+971 52 456 7890',
-    vehicle: 'Toyota Coaster (22 Seater)',
-    plate: 'SHJ 4 5678',
-    pickupArea: 'Sharjah',
-    dropArea: 'Dubai (all areas)',
-    price: 150,
-    reliability: 'High',
-    active: true,
-  },
-  {
-    id: 'DRV-004',
-    name: 'Khalid Omar',
-    phone: '+971 50 333 4444',
-    vehicle: 'Hyundai H1 (9 Seater)',
-    plate: 'DXB M 33445',
-    pickupArea: 'Downtown',
-    dropArea: 'Business Bay, DIFC',
-    price: 130,
-    reliability: 'Low',
-    active: false,
-  },
-  {
-    id: 'DRV-005',
-    name: 'John Doe',
-    phone: '+971 56 111 2222',
-    vehicle: 'Toyota Hiace (14 Seater)',
-    plate: 'DXB L 11223',
-    pickupArea: 'Mirdif',
-    dropArea: 'Warqa, Rashidiya',
-    price: 110,
-    reliability: 'Mid',
-    active: true,
-  },
-  {
-    id: 'DRV-006',
-    name: 'Saeed Al-Maktoum',
-    phone: '+971 54 555 6666',
-    vehicle: 'Nissan Civilian (26 Seater)',
-    plate: 'DXB O 55667',
-    pickupArea: 'International City',
-    dropArea: 'Silicon Oasis',
-    price: 140,
-    reliability: 'High',
-    active: true,
-  },
-  {
-    id: 'DRV-007',
-    name: 'Peter Parker',
-    phone: '+971 58 777 8888',
-    vehicle: 'Toyota Hiace (14 Seater)',
-    plate: 'DXB P 77889',
-    pickupArea: 'JVC',
-    dropArea: 'Sports City, Motor City',
-    price: 115,
-    reliability: 'Mid',
-    active: false,
-  },
-  {
-    id: 'DRV-008',
-    name: 'Bruce Wayne',
-    phone: '+971 50 999 0000',
-    vehicle: 'Mercedes Sprinter (18 Seater)',
-    plate: 'DXB B 99000',
-    pickupArea: 'Palm Jumeirah',
-    dropArea: 'Dubai Marina',
-    price: 160,
-    reliability: 'High',
-    active: true,
-  },
+  { id: 'DRV-001', name: '506992368', phone: '506992368', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Al Barari', price: 300, reliability: 'High', active: true, notes: 'pick up 6:30 am and 8:15 am. second number to carlift 501286566' },
+  { id: 'DRV-002', name: '50 128 6566', phone: '50 128 6566', vehicle: '', plate: '', pickupArea: 'Deira', dropArea: 'Al Barari', price: 300, reliability: 'High', active: true, notes: '' },
+  { id: 'DRV-003', name: '525763287', phone: '525763287', vehicle: '', plate: '', pickupArea: 'Deira', dropArea: 'Arabian Ranches 2', price: 300, reliability: 'High', active: true, notes: '' },
+  { id: 'DRV-004', name: '556949318', phone: '556949318', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Barsha South', price: 0, reliability: 'High', active: true, notes: '7 AM FROM SATWA TO BARCHA SOUTH, THEN FROM BARCHA 1 TO BUSSINESS BAY THEN FROM SATWA TO CITY WALK AND MEYDAN afternoon till 8pm' },
+  { id: 'DRV-005', name: '+971 50 393 1667', phone: '+971 50 393 1667', vehicle: '', plate: '', pickupArea: 'Deira', dropArea: 'Arabian Ranches 3', price: 250, reliability: 'New', active: true, notes: '' },
+  { id: 'DRV-006', name: '561633900', phone: '561633900', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Arabian Ranches 3 & Villanova', price: 350, reliability: 'High', active: true, notes: '' },
+  { id: 'DRV-007', name: '525763287', phone: '525763287', vehicle: '', plate: '', pickupArea: 'Deira', dropArea: 'Arabian Ranches 3 & Villanova', price: 300, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-008', name: '554520081', phone: '554520081', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Arabian Ranches 3 & Villanova', price: 300, reliability: 'High', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-009', name: '507785562', phone: '507785562', vehicle: '', plate: '', pickupArea: 'Satwa/Deira', dropArea: 'Arabian Ranches 3 & Villanova', price: 300, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-010', name: '552143344', phone: '552143344', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Nad al Sheba 4', price: 250, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-011', name: '555656254', phone: '555656254', vehicle: '', plate: '', pickupArea: 'Sharjah', dropArea: 'DIP', price: 500, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost - 524315092' },
+  { id: 'DRV-012', name: '581151191', phone: '581151191', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Damac Hills 1', price: 0, reliability: 'New', active: true, notes: '' },
+  { id: 'DRV-013', name: '505093921', phone: '505093921', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Damac Hills 1', price: 400, reliability: 'Low', active: true, notes: '' },
+  { id: 'DRV-014', name: '588504524', phone: '588504524', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Damac Hills 1', price: 600, reliability: 'High', active: true, notes: 'ONLY PICK UP FROM SATWA 6AM' },
+  { id: 'DRV-015', name: '568060156', phone: '568060156', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Damac Hills 1', price: 300, reliability: 'High', active: true, notes: '' },
+  { id: 'DRV-016', name: '555656254', phone: '555656254', vehicle: '', plate: '', pickupArea: 'Deira', dropArea: 'Damac Hills 1', price: 0, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost - 524315092' },
+  { id: 'DRV-017', name: '568757592', phone: '568757592', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Damac Hills 2', price: 500, reliability: 'High', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-018', name: '568060156', phone: '568060156', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Damac Hills 2', price: 250, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-019', name: '507605903', phone: '507605903', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Damac Hills 2', price: 600, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-020', name: '558471126', phone: '558471126', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Creek Harbour', price: 250, reliability: 'High', active: true, notes: '' },
+  { id: 'DRV-021', name: '568060156', phone: '568060156', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Creek Harbour', price: 80, reliability: 'High', active: true, notes: '(kashmir) Pickup: satwa at 6/7/8/9/10 am Return: From creek harbour at 4/5/6/7/8/9/10 pm' },
+  { id: 'DRV-022', name: '568757592', phone: '568757592', vehicle: '', plate: '', pickupArea: 'Satwa/Deira', dropArea: 'Creek Harbour', price: 200, reliability: 'High', active: true, notes: 'CONFIRMED' },
+  { id: 'DRV-023', name: '507007869', phone: '507007869', vehicle: '', plate: '', pickupArea: 'Deira and Satwa', dropArea: 'Creek Harbour', price: 250, reliability: 'High', active: true, notes: '' },
+  { id: 'DRV-024', name: '545369913', phone: '545369913', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Dubai Hills', price: 250, reliability: 'New', active: true, notes: 'have night shift and morning shift' },
+  { id: 'DRV-025', name: '507785563', phone: '507785563', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Dubai Hills', price: 250, reliability: 'High', active: true, notes: 'all times' },
+  { id: 'DRV-026', name: '586660527', phone: '586660527', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Dubai Hills', price: 250, reliability: 'High', active: true, notes: 'has 7 in the morning (and other times) and 7 in the night (and other times)' },
+  { id: 'DRV-027', name: '529777185', phone: '529777185', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Dubai Hills', price: 0, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-028', name: '522661774', phone: '522661774', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Dubai Hills', price: 0, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-029', name: '525296101', phone: '525296101', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Dubai Hills', price: 200, reliability: 'High', active: true, notes: '' },
+  { id: 'DRV-030', name: '528512112', phone: '528512112', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Dubai Hills', price: 0, reliability: 'Low', active: true, notes: '' },
+  { id: 'DRV-031', name: '582992757', phone: '582992757', vehicle: '', plate: '', pickupArea: 'Al Barsha', dropArea: 'Dubai Hills', price: 150, reliability: 'High', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-032', name: '555656254', phone: '555656254', vehicle: '', plate: '', pickupArea: 'Deira', dropArea: 'Dubai Internet City', price: 500, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost - 524315092' },
+  { id: 'DRV-033', name: '561079413', phone: '561079413', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Dubai Investment Park', price: 350, reliability: 'High', active: true, notes: 'Whatsapp is 523160463' },
+  { id: 'DRV-034', name: '563040953', phone: '563040953', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Dubai Investment Park', price: 0, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-035', name: '555656254', phone: '555656254', vehicle: '', plate: '', pickupArea: 'Deira', dropArea: 'Dubai Investment Park', price: 500, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost - 524315092' },
+  { id: 'DRV-036', name: '526517788', phone: '526517788', vehicle: '', plate: '', pickupArea: 'Al Khail Gate (Al Quoz)', dropArea: 'Dubai Marina', price: 300, reliability: 'High', active: true, notes: '' },
+  { id: 'DRV-037', name: '547610564', phone: '547610564', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Dubai Marina', price: 500, reliability: 'High', active: true, notes: '' },
+  { id: 'DRV-038', name: '553043290', phone: '553043290', vehicle: '', plate: '', pickupArea: 'Deira', dropArea: 'Dubai Silicon Oasis (DSO)', price: 350, reliability: 'High', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-039', name: '568615411', phone: '568615411', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Eden The Valley', price: 500, reliability: 'High', active: true, notes: 'Whatsapp Only' },
+  { id: 'DRV-040', name: '559265818', phone: '559265818', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'JBR Blue Water', price: 320, reliability: 'High', active: true, notes: '' },
+  { id: 'DRV-041', name: '529718080', phone: '529718080', vehicle: '', plate: '', pickupArea: 'Al Rigga', dropArea: 'JBR', price: 300, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-042', name: '505351783', phone: '505351783', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'JLT', price: 300, reliability: 'High', active: true, notes: '6:50 pick up in front of al maya to arrive at 8 AM' },
+  { id: 'DRV-043', name: '521105779', phone: '521105779', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'JLT', price: 300, reliability: 'High', active: true, notes: '' },
+  { id: 'DRV-044', name: '555656254', phone: '555656254', vehicle: '', plate: '', pickupArea: 'Deira', dropArea: 'JLT', price: 500, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost - 524315092' },
+  { id: 'DRV-045', name: '528129966', phone: '528129966', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Jumeirah Park', price: 600, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-046', name: '522160392', phone: '522160392', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Jumeirah Park', price: 300, reliability: 'High', active: true, notes: '7-9-10 AM evening 4 6 10 12 PM' },
+  { id: 'DRV-047', name: '524743751', phone: '524743751', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Jumeirah Park', price: 600, reliability: 'High', active: true, notes: 'from satwa max metro station at 7AM/9am and from JVT or Jumeirah park 5PM / 8 pm WhatsApp:0508819469' },
+  { id: 'DRV-048', name: '563723501', phone: '563723501', vehicle: '', plate: '', pickupArea: 'Al Barsha', dropArea: 'JVC', price: 0, reliability: 'New', active: true, notes: '' },
+  { id: 'DRV-049', name: '567410476', phone: '567410476', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'JVC', price: 600, reliability: 'High', active: true, notes: 'can do 6AM max 6:30 5 days a week' },
+  { id: 'DRV-050', name: '564950851', phone: '564950851', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'JVC', price: 300, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost - Carlift confirmed' },
+  { id: 'DRV-051', name: '551278992', phone: '551278992', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'JVC', price: 300, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-052', name: '555480600', phone: '555480600', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'JVC', price: 300, reliability: 'High', active: true, notes: '7/8/9/10 am and pick up 4/5/6/7/10/12 pm (answers via calls)' },
+  { id: 'DRV-053', name: '545250710', phone: '545250710', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'JVC', price: 600, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-054', name: '505860473', phone: '505860473', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'JVC', price: 600, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-055', name: '521105779', phone: '521105779', vehicle: '', plate: '', pickupArea: 'DMCC Metro Station', dropArea: 'JVC', price: 300, reliability: 'High', active: true, notes: 'ALAM express - Deira Rigga to JVC Circle Mall JLT DMCC ALAM express 7, 8, 9, 10 AM arrival times' },
+  { id: 'DRV-056', name: '521105779', phone: '521105779', vehicle: '', plate: '', pickupArea: 'Deira', dropArea: 'JVC', price: 300, reliability: 'High', active: true, notes: '4, 5, 6, 7, 10, 12 PM drop-off times' },
+  { id: 'DRV-057', name: '504986218', phone: '504986218', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Jumeirah Park and JVT / Hills', price: 600, reliability: 'High', active: true, notes: 'pick up 6:30 am / 9 am pick up / 5 pm 7pm and 8pm' },
+  { id: 'DRV-058', name: '524743751', phone: '524743751', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'JVT', price: 700, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-059', name: '524743751', phone: '524743751', vehicle: '', plate: '', pickupArea: 'DMCC Metro Station', dropArea: 'JVT', price: 500, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-060', name: '568153115', phone: '568153115', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'MAG EYE', price: 400, reliability: 'High', active: true, notes: 'pick up from satwa times: 6, 7, 8, 9, 10, 12 AM drop off times from MAG city: 4:30, 6, 7, 8, 9, 10, 11 PM' },
+  { id: 'DRV-061', name: '506846201', phone: '506846201', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Meydan (Nad Al Sheba 1)', price: 600, reliability: 'High', active: true, notes: 'pick up 8:30 to 7:30' },
+  { id: 'DRV-062', name: '563625675', phone: '563625675', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Meydan (Nad Al Sheba 1)', price: 200, reliability: 'High', active: true, notes: 'STAMPING THE AGREEMENT IS SUPER IMPORTANT FOR HIM (Morning Satwa 7.am 9.20.am 11.10am 12.15pm) (drop off 6pm 8pm 10pm)' },
+  { id: 'DRV-063', name: '545960726', phone: '545960726', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Meydan (Nad Al Sheba 1)', price: 400, reliability: 'High', active: true, notes: 'TESTING - 6:30AM to 5PM and 10 am to 9 pm' },
+  { id: 'DRV-064', name: '508823438', phone: '508823438', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Mirdif', price: 300, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-065', name: '524222718', phone: '524222718', vehicle: '', plate: '', pickupArea: 'Deira', dropArea: 'Mirdif', price: 0, reliability: 'New', active: true, notes: '' },
+  { id: 'DRV-066', name: '501247845', phone: '501247845', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Mudon', price: 300, reliability: 'New', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-067', name: '528129966', phone: '528129966', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Mudon', price: 500, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-068', name: '557605277', phone: '557605277', vehicle: '', plate: '', pickupArea: 'Deira', dropArea: 'Palm Jumeirah', price: 350, reliability: 'High', active: true, notes: 'Only morning / 55 358 6999 active number' },
+  { id: 'DRV-069', name: '553586999', phone: '553586999', vehicle: '', plate: '', pickupArea: 'Deira', dropArea: 'Palm Jumeirah', price: 350, reliability: 'High', active: true, notes: 'FAYAZ EXPRESS' },
+  { id: 'DRV-070', name: '559335680', phone: '559335680', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Palm Jumeirah', price: 380, reliability: 'High', active: true, notes: 'Goes to the Fronds' },
+  { id: 'DRV-071', name: '554998808', phone: '554998808', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Palm Jumeirah', price: 350, reliability: 'High', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-072', name: '553627286', phone: '553627286', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Palm Jumeirah', price: 400, reliability: 'High', active: true, notes: '' },
+  { id: 'DRV-073', name: '567724136', phone: '567724136', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Palm Jumeirah', price: 350, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-074', name: '502655804', phone: '502655804', vehicle: '', plate: '', pickupArea: 'Al Barsha', dropArea: 'Palm Jumeirah', price: 200, reliability: 'High', active: true, notes: '' },
+  { id: 'DRV-075', name: '554141086', phone: '554141086', vehicle: '', plate: '', pickupArea: 'Dubai Internet City', dropArea: 'Palm Jumeirah', price: 500, reliability: 'Low', active: true, notes: 'Goes to the Fronds' },
+  { id: 'DRV-076', name: '528597183', phone: '528597183', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Sharjah', price: 500, reliability: 'High', active: true, notes: '' },
+  { id: 'DRV-077', name: '553738761', phone: '553738761', vehicle: '', plate: '', pickupArea: 'International City', dropArea: 'JLT', price: 300, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-078', name: '527472162', phone: '527472162', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Meadows', price: 300, reliability: 'High', active: true, notes: '' },
+  { id: 'DRV-079', name: '522160350', phone: '522160350', vehicle: '', plate: '', pickupArea: 'Satwa/Deira', dropArea: 'Springs', price: 300, reliability: 'High', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-080', name: '521757026', phone: '521757026', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Springs', price: 300, reliability: 'High', active: true, notes: 'only calls / 5/8/9/10 pick up' },
+  { id: 'DRV-081', name: '555656254', phone: '555656254', vehicle: '', plate: '', pickupArea: 'Deira', dropArea: 'Sports City', price: 500, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost - 524315092' },
+  { id: 'DRV-082', name: '502267000', phone: '502267000', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Motor City', price: 300, reliability: 'New', active: true, notes: '' },
+  { id: 'DRV-083', name: '501151191', phone: '501151191', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Motor City', price: 300, reliability: 'New', active: true, notes: '' },
+  { id: 'DRV-084', name: '505093921', phone: '505093921', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Studio City + Motor City', price: 300, reliability: 'High', active: true, notes: '' },
+  { id: 'DRV-085', name: '569889788', phone: '569889788', vehicle: '', plate: '', pickupArea: '', dropArea: 'Motor City + Damac Hills', price: 400, reliability: 'New', active: true, notes: '' },
+  { id: 'DRV-086', name: '555656254', phone: '555656254', vehicle: '', plate: '', pickupArea: 'Deira', dropArea: 'Studio City', price: 500, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost - 524315092' },
+  { id: 'DRV-087', name: '525763287', phone: '525763287', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'The Sustainable City', price: 300, reliability: 'High', active: true, notes: 'Only to the Main Entrance' },
+  { id: 'DRV-088', name: '502609947', phone: '502609947', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'The Villa', price: 600, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-089', name: '507605903', phone: '507605903', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'The Villa', price: 600, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-090', name: '525763287', phone: '525763287', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Townsquare', price: 300, reliability: 'High', active: true, notes: '7AM, 8AM, 9AM pick up - 5PM, 6PM, 7PM drop off' },
+  { id: 'DRV-091', name: '525752805', phone: '525752805', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Townsquare', price: 300, reliability: 'High', active: true, notes: '10 to 10 or 10 to 6' },
+  { id: 'DRV-092', name: '501247845', phone: '501247845', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Townsquare', price: 300, reliability: 'High', active: true, notes: 'Most Reliable' },
+  { id: 'DRV-093', name: '522160350', phone: '522160350', vehicle: '', plate: '', pickupArea: 'Satwa/Deira', dropArea: 'VIDA Emirates Hills', price: 300, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-094', name: '561633900', phone: '561633900', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Wadi Al Safa 5 & Dubailand', price: 350, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-095', name: '501247845', phone: '501247845', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Wadi Al Safa 7', price: 300, reliability: 'High', active: true, notes: 'pick up point in satwa is at the back side of al maya, and drop point is in serena market' },
+  { id: 'DRV-096', name: '558098007', phone: '558098007', vehicle: '', plate: '', pickupArea: 'Al Barsha', dropArea: 'Tilal Al Ghaf', price: 500, reliability: 'Low', active: true, notes: 'Call and confirm pick up location and cost' },
+  { id: 'DRV-097', name: '522610897', phone: '522610897', vehicle: '', plate: '', pickupArea: 'Al Quoz', dropArea: 'Tilal Al Ghaf', price: 600, reliability: 'High', active: true, notes: '7:30 AM to 7 or 8 or 9 PM (will come back to work 9/1)' },
+  { id: 'DRV-098', name: '508772614', phone: '508772614', vehicle: '', plate: '', pickupArea: 'Satwa, Rigga, Karama', dropArea: 'Tilal Al Ghaf + Victory Heights + Sport City', price: 300, reliability: 'High', active: true, notes: 'the timing and the agreement on the right, he only drops off at (carrefour area) on the highway' },
+  { id: 'DRV-099', name: '557128445', phone: '557128445', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Motor City / Studio City / Sports City / Tilal Al Ghaf', price: 300, reliability: 'High', active: true, notes: '' },
+  { id: 'DRV-100', name: '506992368', phone: '506992368', vehicle: '', plate: '', pickupArea: '', dropArea: 'Al Barari', price: 300, reliability: 'Low', active: true, notes: '' },
+  { id: 'DRV-101', name: '567410476', phone: '567410476', vehicle: '', plate: '', pickupArea: '67MC+MQH Dubai', dropArea: 'Jumeirah Park', price: 600, reliability: 'Low', active: true, notes: 'we need to try it (5 to 7)' },
+  { id: 'DRV-102', name: '529380774', phone: '529380774', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Jumeirah Golf Estate', price: 0, reliability: 'Low', active: true, notes: '' },
+  { id: 'DRV-103', name: '600 511 115', phone: '600 511 115', vehicle: '', plate: '', pickupArea: 'Community bus', dropArea: 'Yas Island', price: 0, reliability: 'High', active: true, notes: 'community bus for yas island' },
+  { id: 'DRV-104', name: '562424394', phone: '562424394', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'The Valley by Emaar', price: 350, reliability: 'High', active: true, notes: '' },
+  { id: 'DRV-105', name: '559951443', phone: '559951443', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Downtown', price: 200, reliability: 'High', active: true, notes: 'in Ramadan morning 7:30 8 9 10 - evening 3 - 4 - 5 after Ramadan morning 7:30 8 9 10 evening 5 6 7' },
+  { id: 'DRV-106', name: '502168958', phone: '502168958', vehicle: '', plate: '', pickupArea: 'City Centre Sharjah', dropArea: 'Serena Community', price: 900, reliability: 'New', active: true, notes: '' },
+  { id: 'DRV-107', name: '505969393', phone: '505969393', vehicle: '', plate: '', pickupArea: 'Safun DHM', dropArea: 'Dubai Hills', price: 300, reliability: 'New', active: true, notes: '0505969393 / 0586181071' },
+  { id: 'DRV-108', name: '506538575', phone: '506538575', vehicle: '', plate: '', pickupArea: 'Starline ALFURJAN Satwa', dropArea: 'Nakheel Mall - Palm Jumeirah', price: 300, reliability: 'New', active: true, notes: '' },
+  { id: 'DRV-109', name: '523998487', phone: '523998487', vehicle: '', plate: '', pickupArea: 'Al Maya - Satwa', dropArea: 'JVC', price: 300, reliability: 'New', active: true, notes: '' },
+  { id: 'DRV-110', name: '524666302', phone: '524666302', vehicle: '', plate: '', pickupArea: 'Satwa-Deira', dropArea: 'Arjan', price: 250, reliability: 'New', active: true, notes: 'Car lift Name: Abdullah - pickup available every hour starting 5:30AM' },
+  { id: 'DRV-111', name: '525396204', phone: '525396204', vehicle: '', plate: '', pickupArea: 'Union Metro Station - Deira', dropArea: 'Dubai Hills', price: 300, reliability: 'High', active: true, notes: 'Car lift Name: Alamexpress99 | NA, texted him on WA' },
+  { id: 'DRV-112', name: '552306994', phone: '552306994', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Arabian Ranches | Carrefour', price: 750, reliability: 'New', active: true, notes: '' },
+  { id: 'DRV-113', name: '553737604', phone: '553737604', vehicle: '', plate: '', pickupArea: 'Satwa Big Mosque', dropArea: 'Sobha Hartland & Azizi Riviera', price: 150, reliability: 'New', active: true, notes: 'Car lift Name: Haroon | pickup every hour starting 6AM, Returning every hour starting 5pm' },
+  { id: 'DRV-114', name: '554570081', phone: '554570081', vehicle: '', plate: '', pickupArea: 'Rigga/Deira', dropArea: 'Villanova', price: 350, reliability: 'New', active: true, notes: 'Car lift Name: Amer Khan | Departs: 6:45 7:45AM - Returns: 7PM 9PM' },
+  { id: 'DRV-115', name: '556785466', phone: '556785466', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Dubai Hills', price: 250, reliability: 'New', active: true, notes: 'Car lift Name: Shakir Khan' },
+  { id: 'DRV-116', name: '557123799', phone: '557123799', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Downtown', price: 300, reliability: 'New', active: true, notes: '24 hour service' },
+  { id: 'DRV-117', name: '557123799', phone: '557123799', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Palm Jumeirah', price: 300, reliability: 'New', active: true, notes: 'Car lift Name: Imtiyaz' },
+  { id: 'DRV-118', name: '559911906', phone: '559911906', vehicle: '', plate: '', pickupArea: 'Rigga/Deira', dropArea: 'Palm Jumeirah (inside)', price: 400, reliability: 'New', active: true, notes: 'Car lift Name: Imtiyaz' },
+  { id: 'DRV-119', name: '586587582', phone: '586587582', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Palm Jumeirah Fronds', price: 350, reliability: 'New', active: true, notes: 'Car lift Name: Al Furjan' },
+  { id: 'DRV-120', name: '501914838', phone: '501914838', vehicle: '', plate: '', pickupArea: 'Deira', dropArea: 'The Greens', price: 0, reliability: 'New', active: true, notes: 'To call at 4PM so we can speak the manager/coordinator' },
+  { id: 'DRV-121', name: '545292312', phone: '545292312', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Polo Meydan', price: 450, reliability: 'New', active: true, notes: 'Called NA/ texted on WA | Sheik, +971 54 529 2312, Satwa to Polo Meydan, 450 dirham per month' },
+  { id: 'DRV-122', name: '506181943', phone: '506181943', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Damac Hills', price: 500, reliability: 'New', active: true, notes: 'Car lift Name: Habib | should check if he has space 1st (car not van) 6AM-7PM' },
+  { id: 'DRV-123', name: '501455084', phone: '501455084', vehicle: '', plate: '', pickupArea: 'Barsha', dropArea: 'Jumeirah Golf Estates', price: 500, reliability: 'New', active: true, notes: 'from 7 AM to 7 PM' },
+  { id: 'DRV-124', name: '501455084', phone: '501455084', vehicle: '', plate: '', pickupArea: 'Quoz', dropArea: 'Jumeirah Golf Estates', price: 500, reliability: 'New', active: true, notes: 'from 7 AM to 7 PM (flexible)' },
+  { id: 'DRV-125', name: '568757592', phone: '568757592', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Damac Hills 2', price: 500, reliability: 'New', active: true, notes: '7 am to 5 pm' },
+  { id: 'DRV-126', name: '50 593 8554', phone: '50 593 8554', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'AR3', price: 300, reliability: 'High', active: true, notes: '' },
+  { id: 'DRV-127', name: '545266601', phone: '545266601', vehicle: '', plate: '', pickupArea: 'Satwa', dropArea: 'Bluewater Island Dubai', price: 300, reliability: 'High', active: true, notes: '' },
 ];
 
 function loadFromStorage(key, fallback) {
@@ -357,8 +401,24 @@ function saveToStorage(key, value) {
   } catch { /* ignore */ }
 }
 
-// Reverse geocode cache to avoid repeated API calls
+// Reverse geocode cache to avoid repeated API calls (persists across re-renders)
 const geoCache = {};
+// Track which order+field combos have already been geocoded so we don't redo them
+const geocodedKeys = new Set();
+
+/**
+ * Parse DMS coordinates from text, e.g. 25°14'28.3"N 55°17'04.1"E
+ */
+function parseDMS(text) {
+  const dmsRe = /(\d+)°(\d+)[''′](\d+\.?\d*)[""″]([NS])\s*(\d+)°(\d+)[''′](\d+\.?\d*)[""″]([EW])/;
+  const m = text.match(dmsRe);
+  if (!m) return null;
+  let lat = +m[1] + +m[2] / 60 + +m[3] / 3600;
+  let lon = +m[5] + +m[6] / 60 + +m[7] / 3600;
+  if (m[4] === 'S') lat = -lat;
+  if (m[8] === 'W') lon = -lon;
+  return { lat, lon };
+}
 
 async function reverseGeocode(lat, lon) {
   if (!lat || !lon) return null;
@@ -384,12 +444,25 @@ export function AppProvider({ children }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [drivers, setDrivers] = useState(() => loadFromStorage('carlift_drivers', INITIAL_DRIVERS));
+  const [drivers, setDrivers] = useState(() => {
+    // Start with localStorage as fallback; Supabase load will override on mount
+    const storedVersion = loadFromStorage('carlift_drivers_version', 0);
+    if (storedVersion < DRIVER_VERSION) {
+      saveToStorage('carlift_drivers_version', DRIVER_VERSION);
+      saveToStorage('carlift_drivers', INITIAL_DRIVERS);
+      return INITIAL_DRIVERS;
+    }
+    return loadFromStorage('carlift_drivers', INITIAL_DRIVERS);
+  });
+  const driversLoadedFromDb = useRef(false);
   const [followUpOrders, setFollowUpOrders] = useState([]);
   const [followUpData, setFollowUpData] = useState({});
   // Track confirmed driver assignments per order so TripCard state survives re-clustering
   const [tripAssignments, setTripAssignments] = useState(() => loadFromStorage('carlift_trip_assignments', {}));
+  const tripAssignmentsLoadedFromDb = useRef(false);
   const [historyOrders, setHistoryOrders] = useState([]);
+  // Track manually deleted order IDs so the API re-fetch doesn't bring them back
+  const deletedOrderIdsRef = useRef(new Set(loadFromStorage('carlift_deleted_orders', [])));
 
   // Persist drivers & trip assignments to localStorage (unchanged)
   useEffect(() => { saveToStorage('carlift_drivers', drivers); }, [drivers]);
@@ -418,20 +491,52 @@ export function AppProvider({ children }) {
     }
   }, []);
 
+  const refreshDrivers = useCallback(async () => {
+    try {
+      const data = await sbFetchDrivers();
+      if (data && data.length > 0) {
+        setDrivers(data);
+        driversLoadedFromDb.current = true;
+      } else if (!driversLoadedFromDb.current) {
+        // First time: DB is empty, seed it with INITIAL_DRIVERS
+        await sbUpsertDrivers(INITIAL_DRIVERS);
+        driversLoadedFromDb.current = true;
+      }
+    } catch (err) {
+      console.error('Failed to load drivers from Supabase:', err);
+    }
+  }, []);
+
+  const refreshTripAssignments = useCallback(async () => {
+    try {
+      const data = await sbFetchTripAssignments();
+      setTripAssignments(data);
+      tripAssignmentsLoadedFromDb.current = true;
+    } catch (err) {
+      console.error('Failed to load trip assignments from Supabase:', err);
+    }
+  }, []);
+
   useEffect(() => {
     // Initial load from Supabase
     refreshFollowUp();
     refreshHistory();
+    refreshDrivers();
+    refreshTripAssignments();
 
     // Realtime: re-fetch on any change so all clients stay in sync
     const unsubFollowUp = subscribeToFollowUp(() => refreshFollowUp());
     const unsubHistory = subscribeToHistory(() => refreshHistory());
+    const unsubDrivers = subscribeToDrivers(() => refreshDrivers());
+    const unsubTrips = subscribeToTripAssignments(() => refreshTripAssignments());
 
     return () => {
       unsubFollowUp();
       unsubHistory();
+      unsubDrivers();
+      unsubTrips();
     };
-  }, [refreshFollowUp, refreshHistory]);
+  }, [refreshFollowUp, refreshHistory, refreshDrivers, refreshTripAssignments]);
 
   // Compound area names that start with a city name — must NOT strip the city word
   const COMPOUND_AREAS = [
@@ -490,34 +595,59 @@ export function AppProvider({ children }) {
   const mapApiOrder = (raw) => {
     const maidAddr = cleanAddress(raw.maidAddress);
     const clientAddr = cleanAddress(raw.ClientAddress);
+
+    // Extract lat/long from API fields, DMS in address text, or decimal coords in text
+    let maidLat = raw.maidLat && raw.maidLat !== -1 ? raw.maidLat : null;
+    let maidLong = raw.maidLong && raw.maidLong !== -1 ? raw.maidLong : null;
+    let clientLat = raw.clientLat && raw.clientLat !== -1 ? raw.clientLat : null;
+    let clientLong = raw.clientLong && raw.clientLong !== -1 ? raw.clientLong : null;
+
+    // Try to extract coords from DMS or decimal in address text when API coords missing
+    if (!maidLat && raw.maidAddress) {
+      const dms = parseDMS(raw.maidAddress);
+      if (dms) { maidLat = dms.lat; maidLong = dms.lon; }
+      else {
+        const decMatch = raw.maidAddress.match(/(\d{1,2}\.\d{4,})\s*,\s*(\d{1,3}\.\d{4,})/);
+        if (decMatch) { maidLat = +decMatch[1]; maidLong = +decMatch[2]; }
+      }
+    }
+    if (!clientLat && raw.ClientAddress) {
+      const dms = parseDMS(raw.ClientAddress);
+      if (dms) { clientLat = dms.lat; clientLong = dms.lon; }
+      else {
+        const decMatch = raw.ClientAddress.match(/(\d{1,2}\.\d{4,})\s*,\s*(\d{1,3}\.\d{4,})/);
+        if (decMatch) { clientLat = +decMatch[1]; clientLong = +decMatch[2]; }
+      }
+    }
+
     return {
-    id: raw.id || String(raw.contractId),
-    contractId: raw.contractId ? String(raw.contractId) : raw.id,
-    clientName: raw.clientName || 'N/A',
-    clientLocation: clientAddr || 'Location N/A',
-    clientArea: clientAddr || 'N/A',
-    clientId: raw.clientId || '',
-    housemaidName: raw.housemaidName || 'N/A',
-    housemaidPhone: raw.housemaidPhoneNumber && raw.housemaidPhoneNumber !== '***' ? raw.housemaidPhoneNumber : 'Phone: N/A',
-    housemaidStatus: raw.housemaidStatus || '',
-    housemaidId: raw.housemaidId || '',
-    maidLocation: maidAddr || 'Location N/A',
-    pickupArea: maidAddr || 'N/A',
-    dropoffArea: clientAddr || 'N/A',
-    creationDate: raw.creationDate || '',
-    transferDate: raw.transferDate || '',
-    typeOfTheContractLabel: raw.typeOfTheContractLabel || '',
-    assignee: raw.assignee || null,
-    pendingStatus: raw.pendingStatus || '',
-    urgent: raw.urgent || false,
-    liveOut: raw.liveOut || false,
-    clientMobileNumber: raw.clientMobileNumber && raw.clientMobileNumber !== '***' ? raw.clientMobileNumber : 'Phone: N/A',
-    clientWhatsappNumber: raw.clientWhatsappNumber && raw.clientWhatsappNumber !== '***' ? raw.clientWhatsappNumber : 'Phone: N/A',
-    maidLat: raw.maidLat && raw.maidLat !== -1 ? raw.maidLat : null,
-    maidLong: raw.maidLong && raw.maidLong !== -1 ? raw.maidLong : null,
-    clientLat: raw.clientLat && raw.clientLat !== -1 ? raw.clientLat : null,
-    clientLong: raw.clientLong && raw.clientLong !== -1 ? raw.clientLong : null,
-  };
+      id: raw.id || String(raw.contractId),
+      contractId: raw.contractId ? String(raw.contractId) : raw.id,
+      clientName: raw.clientName || 'N/A',
+      clientLocation: clientAddr || 'Location N/A',
+      clientArea: clientAddr || 'N/A',
+      clientId: raw.clientId || '',
+      housemaidName: raw.housemaidName || 'N/A',
+      housemaidPhone: raw.housemaidPhoneNumber && raw.housemaidPhoneNumber !== '***' ? raw.housemaidPhoneNumber : 'Phone: N/A',
+      housemaidStatus: raw.housemaidStatus || '',
+      housemaidId: raw.housemaidId || '',
+      maidLocation: maidAddr || 'Location N/A',
+      pickupArea: maidAddr || 'N/A',
+      dropoffArea: clientAddr || 'N/A',
+      creationDate: raw.creationDate || '',
+      transferDate: raw.transferDate || '',
+      typeOfTheContractLabel: raw.typeOfTheContractLabel || '',
+      assignee: raw.assignee || null,
+      pendingStatus: raw.pendingStatus || '',
+      urgent: raw.urgent || false,
+      liveOut: raw.liveOut || false,
+      clientMobileNumber: raw.clientMobileNumber && raw.clientMobileNumber !== '***' ? raw.clientMobileNumber : 'Phone: N/A',
+      clientWhatsappNumber: raw.clientWhatsappNumber && raw.clientWhatsappNumber !== '***' ? raw.clientWhatsappNumber : 'Phone: N/A',
+      maidLat,
+      maidLong,
+      clientLat,
+      clientLong,
+    };
   };
 
   const STATIC_EXAMPLES = [];
@@ -541,38 +671,46 @@ export function AppProvider({ children }) {
       const withMaid = raw.filter(r => r.housemaidName && r.housemaidName.trim());
       const mapped = withMaid.map(mapApiOrder);
 
-      // Reverse geocode only when API didn't provide usable addresses
+      // Apply cached geocode results immediately (no API call needed)
       const needsGeo = (area) => !area || area === 'N/A' || area === 'Location N/A';
-      const geoTasks = [];
       for (const order of mapped) {
+        const oid = order.id || order.contractId;
         if (needsGeo(order.pickupArea) && order.maidLat && order.maidLong) {
-          geoTasks.push({ order, field: 'pickup', lat: order.maidLat, lon: order.maidLong });
-        }
-        if (needsGeo(order.dropoffArea) && order.clientLat && order.clientLong) {
-          geoTasks.push({ order, field: 'dropoff', lat: order.clientLat, lon: order.clientLong });
-        }
-      }
-      // Nominatim rate limit: 1 req/sec — process sequentially with 1.1s delay
-      for (let i = 0; i < geoTasks.length; i++) {
-        const task = geoTasks[i];
-        const area = await reverseGeocode(task.lat, task.lon);
-        if (area) {
-          if (task.field === 'pickup') {
-            task.order.maidLocation = area;
-            task.order.pickupArea = area;
-          } else {
-            task.order.clientLocation = area;
-            task.order.clientArea = area;
-            task.order.dropoffArea = area;
+          const cacheKey = `${order.maidLat.toFixed(4)},${order.maidLong.toFixed(4)}`;
+          if (geoCache[cacheKey]) {
+            order.maidLocation = geoCache[cacheKey];
+            order.pickupArea = geoCache[cacheKey];
           }
         }
-        if (i < geoTasks.length - 1) await new Promise(r => setTimeout(r, 1100));
+        if (needsGeo(order.dropoffArea) && order.clientLat && order.clientLong) {
+          const cacheKey = `${order.clientLat.toFixed(4)},${order.clientLong.toFixed(4)}`;
+          if (geoCache[cacheKey]) {
+            order.clientLocation = geoCache[cacheKey];
+            order.clientArea = geoCache[cacheKey];
+            order.dropoffArea = geoCache[cacheKey];
+          }
+        }
+      }
+
+      // Collect tasks that still need geocoding (skip already-geocoded order+field combos)
+      const geoTasks = [];
+      for (const order of mapped) {
+        const oid = order.id || order.contractId;
+        if (needsGeo(order.pickupArea) && order.maidLat && order.maidLong && !geocodedKeys.has(`${oid}-pickup`)) {
+          geoTasks.push({ order, field: 'pickup', lat: order.maidLat, lon: order.maidLong, oid });
+        }
+        if (needsGeo(order.dropoffArea) && order.clientLat && order.clientLong && !geocodedKeys.has(`${oid}-dropoff`)) {
+          geoTasks.push({ order, field: 'dropoff', lat: order.clientLat, lon: order.clientLong, oid });
+        }
       }
 
       // Merge with Supabase: prefer Supabase version for edited orders
-      const allProcessed = [...STATIC_EXAMPLES, ...mapped];
+      // Filter out manually deleted orders so they don't reappear
+      const allProcessed = [...STATIC_EXAMPLES, ...mapped].filter(o => !deletedOrderIdsRef.current.has(o.id || o.contractId));
       try {
-        const sbOrders = await sbFetchOrders();
+        const sbOrdersRaw = await sbFetchOrders();
+        // Also filter deleted IDs from Supabase results
+        const sbOrders = sbOrdersRaw.filter(o => !deletedOrderIdsRef.current.has(o.id || o.contractId));
         const sbMap = new Map(sbOrders.map(o => [o.id || o.contractId, o]));
 
         // For API orders, use Supabase version if it exists (user may have edited it)
@@ -588,7 +726,7 @@ export function AppProvider({ children }) {
 
         setOrders([...merged, ...manualOnly]);
 
-        // Upsert any new API orders that aren't in Supabase yet
+        // Upsert any new API orders that aren't in Supabase yet (skip deleted ones)
         const newApiOrders = allProcessed.filter(o => !sbMap.has(o.id || o.contractId));
         if (newApiOrders.length > 0) {
           sbUpsertOrders(newApiOrders, 'api').catch(err => console.error('Supabase upsert orders failed:', err));
@@ -597,6 +735,28 @@ export function AppProvider({ children }) {
         // Supabase unavailable — use API data directly
         setOrders(allProcessed);
         sbUpsertOrders(allProcessed, 'api').catch(err => console.error('Supabase upsert orders failed:', err));
+      }
+      // Background geocode remaining N/A locations (non-blocking)
+      if (geoTasks.length > 0) {
+        (async () => {
+          for (let i = 0; i < geoTasks.length; i++) {
+            const task = geoTasks[i];
+            geocodedKeys.add(`${task.oid}-${task.field}`);
+            const area = await reverseGeocode(task.lat, task.lon);
+            if (area) {
+              setOrders(prev => prev.map(o => {
+                const oid = o.id || o.contractId;
+                if (oid !== task.oid) return o;
+                if (task.field === 'pickup') {
+                  return { ...o, maidLocation: area, pickupArea: area };
+                } else {
+                  return { ...o, clientLocation: area, clientArea: area, dropoffArea: area };
+                }
+              }));
+            }
+            if (i < geoTasks.length - 1) await new Promise(r => setTimeout(r, 1100));
+          }
+        })();
       }
     } catch (err) {
       setError(err.message);
@@ -621,8 +781,10 @@ export function AppProvider({ children }) {
     const unsub = subscribeToOrders(async (payload) => {
       if (payload.eventType === 'INSERT' && payload.new?.source === 'manual') {
         const newOrder = payload.new.order_data;
+        const noid = newOrder.id || newOrder.contractId;
+        if (deletedOrderIdsRef.current.has(noid)) return;
         setOrders(prev => {
-          if (prev.some(o => (o.id || o.contractId) === (newOrder.id || newOrder.contractId))) return prev;
+          if (prev.some(o => (o.id || o.contractId) === noid)) return prev;
           return [...prev, newOrder];
         });
       }
@@ -635,14 +797,18 @@ export function AppProvider({ children }) {
   const waitingOrders = orders.filter(o => !followUpOrderIds.has(o.id || o.contractId));
 
   // Confirm a driver for a trip — stores assignment for ALL orders in the trip
-  const confirmTripDriver = useCallback((orderIds, driverInfo, pickupTime) => {
+  const confirmTripDriver = useCallback(async (orderIds, driverInfo, pickupTime) => {
+    const newAssignments = {};
     setTripAssignments(prev => {
       const next = { ...prev };
       for (const oid of orderIds) {
-        next[oid] = { driverId: driverInfo.id, driverName: driverInfo.name, driverPhone: driverInfo.phone, driverPrice: driverInfo.price, pickupTime };
+        const assignment = { driverId: driverInfo.id, driverName: driverInfo.name, driverPhone: driverInfo.phone, driverPrice: driverInfo.price, pickupTime };
+        next[oid] = assignment;
+        newAssignments[oid] = assignment;
       }
       return next;
     });
+    try { await upsertTripAssignmentsBulk(newAssignments); } catch (err) { console.error('Supabase upsert trip assignments failed:', err); }
   }, []);
 
   // Move a single order to follow-up with its driver/trip context
@@ -672,8 +838,15 @@ export function AppProvider({ children }) {
       delete next[orderId];
       return next;
     });
+    // Remove from waiting list so API refetch doesn't bring it back
+    setOrders(prev => prev.filter(o => (o.id || o.contractId) !== orderId));
+    deletedOrderIdsRef.current.add(orderId);
+    saveToStorage('carlift_deleted_orders', [...deletedOrderIdsRef.current]);
     // Persist to Supabase
-    try { await upsertFollowUpOrder(entry); } catch (err) { console.error('Supabase upsert follow-up order failed:', err); }
+    try {
+      await upsertFollowUpOrder(entry);
+      await deleteOrderFromDb(orderId);
+    } catch (err) { console.error('Supabase upsert follow-up order failed:', err); }
   }, []);
 
   const moveBackToWaiting = useCallback(async (orderId) => {
@@ -684,18 +857,24 @@ export function AppProvider({ children }) {
       delete next[orderId];
       return next;
     });
+    // Un-delete so the order can reappear in waiting list from API
+    deletedOrderIdsRef.current.delete(orderId);
+    saveToStorage('carlift_deleted_orders', [...deletedOrderIdsRef.current]);
     // Persist to Supabase (cascade deletes follow_up_data)
     try { await deleteFollowUpOrder(orderId); } catch (err) { console.error('Supabase delete follow-up order failed:', err); }
   }, []);
 
   const updateFollowUp = useCallback(async (orderId, data) => {
-    // Optimistic local update
-    setFollowUpData(prev => ({
-      ...prev,
-      [orderId]: { ...(prev[orderId] || {}), ...data },
-    }));
-    // Persist to Supabase
-    try { await upsertFollowUpData(orderId, data); } catch (err) { console.error('Supabase upsert follow-up data failed:', err); }
+    // Optimistic local update — merge and pass full data to Supabase
+    let merged = null;
+    setFollowUpData(prev => {
+      merged = { ...(prev[orderId] || {}), ...data };
+      return { ...prev, [orderId]: merged };
+    });
+    // Persist full merged data to Supabase (so all days including 4+ are saved)
+    if (merged) {
+      try { await upsertFollowUpData(orderId, merged); } catch (err) { console.error('Supabase upsert follow-up data failed:', err); }
+    }
   }, []);
 
   const completeFollowUp = useCallback(async (orderId) => {
@@ -724,20 +903,38 @@ export function AppProvider({ children }) {
     } catch (err) { console.error('Supabase complete follow-up failed:', err); }
   }, [followUpOrders, followUpData]);
 
-  const addDriver = useCallback((driver) => {
+  const addDriver = useCallback(async (driver) => {
     setDrivers(prev => [...prev, driver]);
+    try { await sbUpsertDriver(driver); } catch (err) { console.error('Supabase add driver failed:', err); }
   }, []);
 
-  const updateDriver = useCallback((id, updates) => {
-    setDrivers(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
+  const updateDriver = useCallback(async (id, updates) => {
+    let updatedDriver = null;
+    setDrivers(prev => prev.map(d => {
+      if (d.id !== id) return d;
+      updatedDriver = { ...d, ...updates };
+      return updatedDriver;
+    }));
+    if (updatedDriver) {
+      try { await sbUpsertDriver(updatedDriver); } catch (err) { console.error('Supabase update driver failed:', err); }
+    }
   }, []);
 
-  const toggleDriver = useCallback((id) => {
-    setDrivers(prev => prev.map(d => d.id === id ? { ...d, active: !d.active } : d));
+  const toggleDriver = useCallback(async (id) => {
+    let updatedDriver = null;
+    setDrivers(prev => prev.map(d => {
+      if (d.id !== id) return d;
+      updatedDriver = { ...d, active: !d.active };
+      return updatedDriver;
+    }));
+    if (updatedDriver) {
+      try { await sbUpsertDriver(updatedDriver); } catch (err) { console.error('Supabase toggle driver failed:', err); }
+    }
   }, []);
 
-  const deleteDriver = useCallback((id) => {
+  const deleteDriver = useCallback(async (id) => {
     setDrivers(prev => prev.filter(d => d.id !== id));
+    try { await deleteDriverFromDb(id); } catch (err) { console.error('Supabase delete driver failed:', err); }
   }, []);
 
   const addManualOrder = useCallback(async (order) => {
@@ -783,8 +980,50 @@ export function AppProvider({ children }) {
     }
   }, []);
 
+  const moveHistoryToFollowUp = useCallback(async (orderId) => {
+    let historyEntry = null;
+    setHistoryOrders(prev => {
+      historyEntry = prev.find(h => h.orderId === orderId);
+      return prev.filter(h => h.orderId !== orderId);
+    });
+    if (!historyEntry) return;
+    const followUpEntry = {
+      orderId: historyEntry.orderId,
+      order: historyEntry.order,
+      driverName: historyEntry.driverName,
+      driverPhone: historyEntry.driverPhone,
+      driverPrice: historyEntry.driverPrice,
+      driverId: historyEntry.driverId,
+      routeLabel: historyEntry.routeLabel,
+      pickupLabel: historyEntry.pickupLabel,
+      dropoffLabel: historyEntry.dropoffLabel,
+      timeWindow: historyEntry.timeWindow,
+      plannedTransportation: historyEntry.plannedTransportation,
+      confirmedAt: historyEntry.confirmedAt,
+    };
+    setFollowUpOrders(prev => {
+      if (prev.some(o => o.orderId === orderId)) return prev;
+      return [...prev, followUpEntry];
+    });
+    // Restore follow-up data if it existed
+    const fuData = historyEntry.followUpData || {};
+    if (Object.keys(fuData).length > 0) {
+      setFollowUpData(prev => ({ ...prev, [orderId]: fuData }));
+    }
+    // Persist to Supabase
+    try {
+      await upsertFollowUpOrder(followUpEntry);
+      if (Object.keys(fuData).length > 0) {
+        await upsertFollowUpData(orderId, fuData);
+      }
+      await deleteHistoryOrder(orderId);
+    } catch (err) { console.error('Supabase move history to follow-up failed:', err); }
+  }, []);
+
   const deleteOrder = useCallback(async (orderId) => {
     setOrders(prev => prev.filter(o => (o.id || o.contractId) !== orderId));
+    deletedOrderIdsRef.current.add(orderId);
+    saveToStorage('carlift_deleted_orders', [...deletedOrderIdsRef.current]);
     try { await deleteOrderFromDb(orderId); } catch (err) { console.error('Supabase delete order failed:', err); }
   }, []);
 
@@ -814,6 +1053,7 @@ export function AppProvider({ children }) {
       deleteOrder,
       updateHistoryOrderData,
       updateFollowUpOrderInContext,
+      moveHistoryToFollowUp,
     }}>
       {children}
     </AppContext.Provider>
