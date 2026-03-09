@@ -403,10 +403,13 @@ function saveToStorage(key, value) {
 
 // Reverse geocode cache — persisted to localStorage so it survives page refreshes
 const GEO_CACHE_STORAGE_KEY = 'carlift_geocache';
-const geoCache = loadFromStorage(GEO_CACHE_STORAGE_KEY, {});
+const GEO_CACHE_VERSION = 2; // bump to invalidate old cache with "Al " prefixed values
+const geoCacheRaw = loadFromStorage(GEO_CACHE_STORAGE_KEY, {});
+const geoCache = (geoCacheRaw._v === GEO_CACHE_VERSION) ? geoCacheRaw : { _v: GEO_CACHE_VERSION };
 function persistGeoCache() {
   saveToStorage(GEO_CACHE_STORAGE_KEY, geoCache);
 }
+if (geoCacheRaw._v !== GEO_CACHE_VERSION) persistGeoCache(); // clear stale cache
 // Track which order+field combos have already been geocoded so we don't redo them
 const geocodedKeys = new Set();
 // Prevent concurrent fetchOrders from overlapping geocode work
@@ -462,31 +465,58 @@ function extractCoords(text) {
 
 // Known Dubai/UAE area keywords for fallback extraction from raw text
 const KNOWN_AREAS = [
+  // Multi-word areas (check these first — longer matches take priority)
   'Victory Heights', 'Arabian Ranches', 'Palm Jumeirah', 'Business Bay', 'Silicon Oasis',
   'Sports City', 'Motor City', 'International City', 'Discovery Gardens', 'Dubai Hills',
   'Dubai Marina', 'Dubai Downtown', 'Barsha Heights', 'Emirates Hills', 'Damac Hills',
-  'Town Square', 'Tilal Al Ghaf', 'Nad Al Sheba', 'Yas Island', 'Khalifa City',
+  'Town Square', 'Townsquare', 'Tilal Al Ghaf', 'Nad Al Sheba', 'Yas Island', 'Khalifa City',
   'Dubai Land', 'Dubailand', 'Creek Beach', 'Creek Harbour', 'Al Raha Beach', 'Wadi Al Safa',
   'Bur Dubai', 'Al Barsha', 'Al Quoz', 'Al Nahda', 'Al Jafiliya', 'Al Jaffiliya',
   'Al Rigga', 'Al Mankhool', 'Al Garhoud', 'Al Muhaisnah', 'Al Qusais', 'Al Safa',
   'Al Wasl', 'Al Satwa', 'Al Furjan', 'Al Reef', 'Al Murar', 'Al Danah', 'Al Bada',
-  'Al Muneera', 'Al Rahba', 'Al Ranim', 'Al Khail',
+  'Al Muneera', 'Al Rahba', 'Al Ranim', 'Al Khail', 'Al Reem', 'Al Reem Island',
   'Abu Hail', 'Umm Suqeim', 'Umm Ramool', 'Um Ramool', 'Oud Metha',
   'Jumeirah Garden City', 'Jumeirah Park', 'Jumeirah Village', 'Jumeirah Islands',
-  'JLT', 'JVC', 'JBR', 'DIFC', 'DIP', 'DSO', 'Downtown', 'Marina', 'Satwa', 'Deira', 'Naif',
+  'Jumeirah Golf Estates', 'Studio City', 'Dubai Investment Park',
+  'Sobha Hartland', 'Mohammed Bin Rashid City', 'MBR City', 'City Walk', 'Bluewaters',
+  'Reem Island', 'Saadiyat Island', 'Yas Acres', 'Yas Aspens',
+  'Meydan', 'Polo Residence', 'Serena', 'The Valley', 'Eden',
+  'Mag Eye', 'MAG City', 'The Sustainable City',
+  'The Villa', 'The Springs', 'The Meadows', 'The Lakes', 'The Greens', 'The Views',
+  'Azizi Riviera', 'Sobha Reserve',
+  'Al Seef', 'Seef Village', 'Raha Beach', 'Al Raha',
+  // Abu Dhabi areas
+  'Reem', 'Danah', 'Saadiyat', 'Yas', 'Corniche', 'Musaffah', 'Mussafah',
+  'Khalifa City', 'Mohamed Bin Zayed City', 'MBZ City', 'Al Shamkha',
+  'Al Reef Villas', 'Al Raha Gardens', 'Masdar City',
+  // Single-word areas
+  'JLT', 'JVC', 'JVT', 'JBR', 'DIFC', 'DIP', 'DSO', 'Downtown', 'Marina', 'Satwa', 'Deira', 'Naif',
   'Karama', 'Mirdif', 'Rashidiya', 'Jumeirah', 'Jumeriah', 'Arjan', 'Tecom',
   'Greens', 'Views', 'Springs', 'Meadows', 'Lakes', 'Remraam', 'Mudon', 'Layan',
-  'Villanova', 'Warsan', 'Saadiyat', 'Sidra', 'Sharjah',
+  'Villanova', 'Warsan', 'Saadiyat', 'Sidra', 'Sharjah', 'Ajman',
+  'Barsha', 'Quoz', 'Nahda', 'Mamzar', 'Warqa', 'Twar', 'Muhaisnah', 'Muteena',
+  'Seef', 'Accommodation',
 ];
 
+// Sort KNOWN_AREAS by length descending so longer matches win (e.g. "Yas Island" before "Yas")
+const KNOWN_AREAS_SORTED = [...KNOWN_AREAS].sort((a, b) => b.length - a.length);
+
 /**
- * Scan raw text for a known Dubai area name. Returns the area or null.
+ * Strip "Al " / "The " prefix so "Al Barsha" and "Barsha" group together.
+ */
+function stripAreaPrefix(name) {
+  if (!name) return name;
+  return name.replace(/^(Al |The )/i, '').trim();
+}
+
+/**
+ * Scan raw text for a known Dubai area name. Returns the longest match (prefix-stripped) or null.
  */
 function findKnownArea(text) {
   if (!text) return null;
   const upper = text.toUpperCase();
-  for (const area of KNOWN_AREAS) {
-    if (upper.includes(area.toUpperCase())) return area;
+  for (const area of KNOWN_AREAS_SORTED) {
+    if (upper.includes(area.toUpperCase())) return stripAreaPrefix(area);
   }
   return null;
 }
@@ -495,23 +525,40 @@ async function reverseGeocode(lat, lon) {
   if (!lat || !lon) return null;
   const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
   if (geoCache[key]) return geoCache[key];
-  try {
+
+  // Helper: fetch Nominatim at a given zoom and try to match a known area
+  async function tryZoom(zoom) {
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=16&addressdetails=1`,
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=${zoom}&addressdetails=1`,
       { headers: { 'User-Agent': 'CarliftOps/1.0' } }
     );
     if (!res.ok) return null;
     const data = await res.json();
     const addr = data.address || {};
-    const area = addr.neighbourhood || addr.residential || addr.quarter
-      || addr.suburb || addr.hamlet || addr.village
-      || addr.town || addr.city_district || addr.city
-      || data.name || null;
-    if (area) {
-      geoCache[key] = area;
-      persistGeoCache();
+    const candidates = [
+      addr.neighbourhood, addr.residential, addr.quarter,
+      addr.suburb, addr.hamlet, addr.village,
+      addr.town, addr.city_district, data.name,
+      data.display_name,
+    ].filter(Boolean);
+    const allText = candidates.join(' ');
+    return findKnownArea(allText);
+  }
+
+  try {
+    // Try progressively broader zoom levels until we match a known area
+    // zoom 16 = neighbourhood, 14 = suburb, 12 = district, 10 = city
+    for (const zoom of [16, 14, 12, 10]) {
+      const matched = await tryZoom(zoom);
+      if (matched) {
+        geoCache[key] = matched;
+        persistGeoCache();
+        return matched;
+      }
+      // Rate limit between Nominatim calls
+      await new Promise(r => setTimeout(r, 1100));
     }
-    return area;
+    return null; // No known area found at any zoom — don't cache junk
   } catch {
     return null;
   }
@@ -688,24 +735,33 @@ export function AppProvider({ children }) {
       if (coords) { clientLat = coords.lat; clientLong = coords.lon; }
     }
 
-    // Fallback: if cleanAddress failed, search for known area names in the raw text
-    const maidArea = maidAddr || findKnownArea(raw.maidAddress);
-    const clientArea = clientAddr || findKnownArea(raw.ClientAddress);
+    // For display: full cleaned address. For clustering: just the area name.
+    // Try findKnownArea first (on raw text, then cleaned text) for a short area label.
+    const maidKnown = findKnownArea(raw.maidAddress) || findKnownArea(maidAddr);
+    const clientKnown = findKnownArea(raw.ClientAddress) || findKnownArea(clientAddr);
+
+    // Full text for display (detailed location shown on card)
+    const maidDisplay = maidAddr || maidKnown || 'Location N/A';
+    const clientDisplay = clientAddr || clientKnown || 'Location N/A';
+
+    // Short area name for clustering/grouping (prefer known area, fallback to full)
+    const maidAreaShort = maidKnown || maidAddr || 'N/A';
+    const clientAreaShort = clientKnown || clientAddr || 'N/A';
 
     return {
       id: raw.id || String(raw.contractId),
       contractId: raw.contractId ? String(raw.contractId) : raw.id,
       clientName: raw.clientName || 'N/A',
-      clientLocation: clientArea || 'Location N/A',
-      clientArea: clientArea || 'N/A',
+      clientLocation: clientDisplay,
+      clientArea: clientAreaShort,
       clientId: raw.clientId || '',
       housemaidName: raw.housemaidName || 'N/A',
       housemaidPhone: raw.housemaidPhoneNumber && raw.housemaidPhoneNumber !== '***' ? raw.housemaidPhoneNumber : 'Phone: N/A',
       housemaidStatus: raw.housemaidStatus || '',
       housemaidId: raw.housemaidId || '',
-      maidLocation: maidArea || 'Location N/A',
-      pickupArea: maidArea || 'N/A',
-      dropoffArea: clientArea || 'N/A',
+      maidLocation: maidDisplay,
+      pickupArea: maidAreaShort,
+      dropoffArea: clientAreaShort,
       creationDate: raw.creationDate || '',
       transferDate: raw.transferDate || '',
       typeOfTheContractLabel: raw.typeOfTheContractLabel || '',
@@ -756,12 +812,25 @@ export function AppProvider({ children }) {
           const oid = o.id || o.contractId;
           const sbVersion = sbMap.get(oid);
           if (!sbVersion) return o;
+          // Pick the better (non-N/A) value between API and Supabase
+          const best = (apiVal, sbVal) => {
+            const apiOk = apiVal && apiVal !== 'N/A' && apiVal !== 'Location N/A';
+            const sbOk = sbVal && sbVal !== 'N/A' && sbVal !== 'Location N/A';
+            if (apiOk) return apiVal;
+            if (sbOk) return sbVal;
+            return apiVal;
+          };
           return {
             ...sbVersion,
             maidLat: o.maidLat ?? sbVersion.maidLat,
             maidLong: o.maidLong ?? sbVersion.maidLong,
             clientLat: o.clientLat ?? sbVersion.clientLat,
             clientLong: o.clientLong ?? sbVersion.clientLong,
+            pickupArea: best(o.pickupArea, sbVersion.pickupArea),
+            dropoffArea: best(o.dropoffArea, sbVersion.dropoffArea),
+            clientArea: best(o.clientArea, sbVersion.clientArea),
+            maidLocation: best(o.maidLocation, sbVersion.maidLocation),
+            clientLocation: best(o.clientLocation, sbVersion.clientLocation),
           };
         });
 
@@ -798,7 +867,6 @@ export function AppProvider({ children }) {
       }
 
       // ── Collect UNIQUE coords that still need geocoding ──
-      // De-duplicate: many orders share the same area, so one API call resolves many orders
       const uniqueCoords = new Map();
       for (const order of finalOrders) {
         const oid = order.id || order.contractId;
@@ -814,41 +882,40 @@ export function AppProvider({ children }) {
         }
       }
 
-      // ── Await ALL geocoding before rendering (zero N/As for orders with coords) ──
-      const coordEntries = [...uniqueCoords.entries()];
-      for (let i = 0; i < coordEntries.length; i++) {
-        const [, { lat, lon, targets }] = coordEntries[i];
-        const area = await reverseGeocode(lat, lon);
-        if (area) {
-          for (const { oid, field } of targets) {
-            const order = finalOrders.find(o => (o.id || o.contractId) === oid);
-            if (!order) continue;
-            if (field === 'pickup') {
-              order.maidLocation = area;
-              order.pickupArea = area;
-            } else {
-              order.clientLocation = area;
-              order.clientArea = area;
-              order.dropoffArea = area;
-            }
-            geocodedKeys.add(`${oid}-${field}`);
-          }
-        }
-        if (i < coordEntries.length - 1) await new Promise(r => setTimeout(r, 1100));
-      }
-
+      // Render immediately with whatever we have (cache hits are already resolved)
       setOrders(finalOrders);
 
-      // Persist all freshly geocoded orders to Supabase in one batch
+      // Background geocode remaining N/As (non-blocking so UI isn't stuck)
+      const coordEntries = [...uniqueCoords.entries()];
       if (coordEntries.length > 0) {
-        const touchedOids = new Set();
-        for (const [, { targets }] of coordEntries) {
-          for (const { oid } of targets) touchedOids.add(oid);
-        }
-        const ordersToSync = finalOrders.filter(o => touchedOids.has(o.id || o.contractId));
-        if (ordersToSync.length > 0) {
-          sbUpsertOrders(ordersToSync, 'api').catch(err => console.error('Supabase persist geocode failed:', err));
-        }
+        (async () => {
+          for (let i = 0; i < coordEntries.length; i++) {
+            const [, { lat, lon, targets }] = coordEntries[i];
+            const area = await reverseGeocode(lat, lon);
+            if (area) {
+              setOrders(prev => {
+                const updated = prev.map(o => {
+                  const oid = o.id || o.contractId;
+                  const match = targets.find(t => t.oid === oid);
+                  if (!match) return o;
+                  if (match.field === 'pickup') {
+                    return { ...o, maidLocation: area, pickupArea: area };
+                  } else {
+                    return { ...o, clientLocation: area, clientArea: area, dropoffArea: area };
+                  }
+                });
+                // Persist to Supabase so merge never reverts these back to N/A
+                const touchedOrders = updated.filter(o => targets.some(t => t.oid === (o.id || o.contractId)));
+                if (touchedOrders.length > 0) {
+                  sbUpsertOrders(touchedOrders, 'api').catch(err => console.error('Supabase persist geocode failed:', err));
+                }
+                return updated;
+              });
+              for (const { oid, field } of targets) geocodedKeys.add(`${oid}-${field}`);
+            }
+            if (i < coordEntries.length - 1) await new Promise(r => setTimeout(r, 1100));
+          }
+        })();
       }
     } catch (err) {
       setError(err.message);
