@@ -12,8 +12,26 @@ const FIELD_LABELS = {
 };
 
 export default function HistoryPage() {
-  const { historyOrders, updateHistoryOrderData } = useApp();
+  const { historyOrders, updateHistoryOrderData, moveHistoryToFollowUp } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
+
+  const transportCounts = useMemo(() => {
+    const counts = { carlift: 0, publicTransport: 0, zoneDriver: 0 };
+    for (const ho of historyOrders) {
+      const fuData = ho.followUpData || {};
+      const dayKeys = Object.keys(fuData).filter(k => !isNaN(k)).map(Number).sort((a, b) => b - a);
+      for (const day of dayKeys) {
+        const t = fuData[day]?.actualTransport;
+        if (t) {
+          if (t === 'Carlift') counts.carlift++;
+          else if (t === 'Public transport') counts.publicTransport++;
+          else if (t === 'Zone driver') counts.zoneDriver++;
+          break;
+        }
+      }
+    }
+    return counts;
+  }, [historyOrders]);
 
   const filteredOrders = useMemo(() => {
     if (!searchQuery) return historyOrders;
@@ -53,6 +71,18 @@ export default function HistoryPage() {
           <span className="wl-stat">
             <strong>{historyOrders.length}</strong> completed
           </span>
+          <span className="wl-stat-divider">|</span>
+          <span className="wl-stat" style={{ color: '#3B82F6' }}>
+            <strong>{transportCounts.carlift}</strong> carlift
+          </span>
+          <span className="wl-stat-divider">|</span>
+          <span className="wl-stat" style={{ color: '#8B5CF6' }}>
+            <strong>{transportCounts.publicTransport}</strong> public transport
+          </span>
+          <span className="wl-stat-divider">|</span>
+          <span className="wl-stat" style={{ color: '#EC4899' }}>
+            <strong>{transportCounts.zoneDriver}</strong> zone driver
+          </span>
         </div>
       </div>
 
@@ -70,14 +100,14 @@ export default function HistoryPage() {
 
       <div className="fu-cards-list">
         {filteredOrders.map((ho) => (
-          <HistoryCard key={ho.orderId} ho={ho} onUpdateOrder={updateHistoryOrderData} />
+          <HistoryCard key={ho.orderId} ho={ho} onUpdateOrder={updateHistoryOrderData} onMoveToFollowUp={() => { if (window.confirm('Move this order back to Follow-Up?')) moveHistoryToFollowUp(ho.orderId); }} />
         ))}
       </div>
     </>
   );
 }
 
-function HistoryCard({ ho, onUpdateOrder }) {
+function HistoryCard({ ho, onUpdateOrder, onMoveToFollowUp }) {
   const order = ho.order;
   const fuData = ho.followUpData || {};
   const priority = fuData.priority || 'Normal';
@@ -130,6 +160,12 @@ function HistoryCard({ ho, onUpdateOrder }) {
             <span className={`fu-priority-btn priority-${priority.toLowerCase()}`} style={{ cursor: 'default' }}>
               {priority}
             </span>
+            <button className="move-back-btn" onClick={onMoveToFollowUp}>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M7 9.5L3.5 6 7 2.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Back to Follow-Up
+            </button>
           </div>
         </div>
       </div>

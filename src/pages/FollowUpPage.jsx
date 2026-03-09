@@ -1,10 +1,10 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import EditOrderModal from '../components/EditOrderModal';
 
 const ARRIVAL_OPTIONS = ['', 'Yes', 'No', 'Failed to reach'];
-const TRANSPORT_OPTIONS = ['', 'Carlift', 'Taxi', 'Public transport'];
+const TRANSPORT_OPTIONS = ['', 'Carlift', 'Taxi', 'Public transport', "Can't be served", 'Zone driver'];
 const PRIORITY_OPTIONS = ['Normal', 'High', 'Urgent'];
 const PRIORITY_ORDER = { Urgent: 0, High: 1, Normal: 2 };
 const MAX_FOLLOWUP_DAYS = 30;
@@ -15,6 +15,7 @@ export default function FollowUpPage() {
   const { followUpOrders, followUpData, updateFollowUp, moveBackToWaiting, completeFollowUp, updateFollowUpOrderInContext } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [dayFilter, setDayFilter] = useState('all'); // 'all', 1, 2, 3
+  const [showSnoozed, setShowSnoozed] = useState(false);
 
   const sortedOrders = useMemo(() => {
     const now = new Date();
@@ -38,7 +39,15 @@ export default function FollowUpPage() {
       return !!(d.arrivalStatus || d.actualTransport || d.delayed || d.reason || d.notes);
     };
 
-    return [...followUpOrders].sort((a, b) => {
+    const nowIso = new Date().toISOString();
+    // Filter out snoozed orders
+    const active = followUpOrders.filter(fo => !fo.order?.snoozedUntil || fo.order.snoozedUntil <= nowIso);
+
+    return [...active].sort((a, b) => {
+      // Can't-be-served goes to bottom
+      const ca = a.order?.cannotBeServed ? 1 : 0;
+      const cb = b.order?.cannotBeServed ? 1 : 0;
+      if (ca !== cb) return ca - cb;
       // Priority first
       const pa = PRIORITY_ORDER[followUpData[a.orderId]?.priority || 'Normal'] ?? 2;
       const pb = PRIORITY_ORDER[followUpData[b.orderId]?.priority || 'Normal'] ?? 2;
@@ -49,6 +58,37 @@ export default function FollowUpPage() {
       return da - db;
     });
   }, [followUpOrders, followUpData]);
+
+  const snoozedOrders = useMemo(() => {
+    const nowIso = new Date().toISOString();
+    return followUpOrders.filter(fo => fo.order?.snoozedUntil && fo.order.snoozedUntil > nowIso);
+  }, [followUpOrders]);
+
+  // Auto-escalate to Urgent any order with follow-up > 3 days
+  useEffect(() => {
+    const now = new Date();
+    const todayStrip = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    for (const fo of followUpOrders) {
+      const currentPriority = followUpData[fo.orderId]?.priority || 'Normal';
+      if (currentPriority === 'Urgent') continue;
+
+      let followUpDays = 1;
+      const transfer = fo.order?.transferDate ? new Date(fo.order.transferDate.replace(' ', 'T')) : null;
+      if (transfer) {
+        const transferStrip = new Date(transfer.getFullYear(), transfer.getMonth(), transfer.getDate());
+        followUpDays = Math.max(1, Math.floor((todayStrip - transferStrip) / (1000 * 60 * 60 * 24)) + 1);
+      } else if (fo.confirmedAt) {
+        const confirmed = new Date(fo.confirmedAt);
+        const confirmStrip = new Date(confirmed.getFullYear(), confirmed.getMonth(), confirmed.getDate());
+        followUpDays = Math.max(1, Math.floor((todayStrip - confirmStrip) / (1000 * 60 * 60 * 24)) + 1);
+      }
+
+      if (followUpDays > 3) {
+        updateFollowUp(fo.orderId, { priority: 'Urgent' });
+      }
+    }
+  }, [followUpOrders, followUpData, updateFollowUp]);
 
   const getCurrentDayForOrder = useCallback((fo) => {
     const now = new Date();
@@ -91,6 +131,25 @@ export default function FollowUpPage() {
     }
     return [...days].sort((a, b) => a - b);
   }, [followUpOrders, getCurrentDayForOrder]);
+
+  const transportCounts = useMemo(() => {
+    const counts = { carlift: 0, publicTransport: 0, zoneDriver: 0 };
+    for (const fo of followUpOrders) {
+      const fuEntry = followUpData[fo.orderId];
+      if (!fuEntry) continue;
+      const dayKeys = Object.keys(fuEntry).filter(k => !isNaN(k)).map(Number).sort((a, b) => b - a);
+      for (const day of dayKeys) {
+        const t = fuEntry[day]?.actualTransport;
+        if (t) {
+          if (t === 'Carlift') counts.carlift++;
+          else if (t === 'Public transport') counts.publicTransport++;
+          else if (t === 'Zone driver') counts.zoneDriver++;
+          break;
+        }
+      }
+    }
+    return counts;
+  }, [followUpOrders, followUpData]);
 
   const { pending, done } = useMemo(() => {
     const now = new Date();
@@ -159,6 +218,26 @@ export default function FollowUpPage() {
           <span className="wl-stat" style={{ color: '#16A34A' }}>
             <strong>{done.length}</strong> done today
           </span>
+          {snoozedOrders.length > 0 && (
+            <>
+              <span className="wl-stat-divider">|</span>
+              <span className="wl-stat" style={{ color: '#F59E0B' }}>
+                <strong>{snoozedOrders.length}</strong> snoozed
+              </span>
+            </>
+          )}
+          <span className="wl-stat-divider">|</span>
+          <span className="wl-stat" style={{ color: '#3B82F6' }}>
+            <strong>{transportCounts.carlift}</strong> carlift
+          </span>
+          <span className="wl-stat-divider">|</span>
+          <span className="wl-stat" style={{ color: '#8B5CF6' }}>
+            <strong>{transportCounts.publicTransport}</strong> public transport
+          </span>
+          <span className="wl-stat-divider">|</span>
+          <span className="wl-stat" style={{ color: '#EC4899' }}>
+            <strong>{transportCounts.zoneDriver}</strong> zone driver
+          </span>
         </div>
       </div>
 
@@ -184,10 +263,41 @@ export default function FollowUpPage() {
               {d === 'all' ? 'All Days' : `Day ${d}`}
             </button>
           ))}
+          {snoozedOrders.length > 0 && (
+            <button
+              className={`fu-day-filter-btn snoozed-toggle${showSnoozed ? ' active' : ''}`}
+              onClick={() => setShowSnoozed(prev => !prev)}
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.1"/><path d="M6 3v3l2 1.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/></svg>
+              Snoozed ({snoozedOrders.length})
+            </button>
+          )}
         </div>
       </div>
 
       <div className="fu-cards-list">
+        {showSnoozed ? (
+          <>
+            <div className="fu-section-header snoozed">
+              <span className="fu-section-dot snoozed" />
+              Snoozed ({snoozedOrders.length})
+            </div>
+            {snoozedOrders.map((fo) => (
+              <FollowUpCard
+                key={fo.orderId}
+                fo={fo}
+                data={followUpData[fo.orderId] || {}}
+                onSave={(d) => updateFollowUp(fo.orderId, d)}
+                onMoveBack={() => moveBackToWaiting(fo.orderId)}
+                onPriorityChange={(p) => updateFollowUp(fo.orderId, { priority: p })}
+                onComplete={() => { if (window.confirm('Mark this maid as follow-up complete? She will be moved to History.')) completeFollowUp(fo.orderId); }}
+                onUpdateOrder={(updates) => updateFollowUpOrderInContext(fo.orderId, updates)}
+                snoozedUntil={fo.order?.snoozedUntil}
+              />
+            ))}
+          </>
+        ) : (
+          <>
         {pending.length > 0 && (
           <div className="fu-section-header pending">
             <span className="fu-section-dot pending" />
@@ -229,6 +339,8 @@ export default function FollowUpPage() {
             onUpdateOrder={(updates) => updateFollowUpOrderInContext(fo.orderId, updates)}
           />
         ))}
+          </>
+        )}
       </div>
     </>
   );
@@ -278,9 +390,24 @@ function ReasonField({ reason, onChange }) {
   );
 }
 
-function FollowUpCard({ fo, data, onSave, onMoveBack, onPriorityChange, onComplete, onUpdateOrder }) {
+function SnoozePopover({ onSnooze, onClose }) {
+  const [date, setDate] = useState('');
+  return (
+    <div className="snooze-popover" onClick={e => e.stopPropagation()}>
+      <label className="snooze-label">Snooze until:</label>
+      <input type="datetime-local" className="snooze-input" value={date} onChange={e => setDate(e.target.value)} />
+      <div className="snooze-actions">
+        <button className="snooze-cancel" onClick={onClose}>Cancel</button>
+        <button className="snooze-confirm" disabled={!date} onClick={() => { onSnooze(new Date(date).toISOString()); onClose(); }}>Snooze</button>
+      </div>
+    </div>
+  );
+}
+
+function FollowUpCard({ fo, data, onSave, onMoveBack, onPriorityChange, onComplete, onUpdateOrder, snoozedUntil }) {
   const order = fo.order;
   const [editingOrder, setEditingOrder] = useState(null);
+  const [showSnooze, setShowSnooze] = useState(false);
   const now = new Date();
 
   const transferDate = order.transferDate ? new Date(order.transferDate.replace(' ', 'T')) : null;
@@ -422,6 +549,31 @@ function FollowUpCard({ fo, data, onSave, onMoveBack, onPriorityChange, onComple
               </svg>
               Follow-Up Complete
             </button>
+            {!order.cannotBeServed ? (
+              <button className="cant-serve-btn" onClick={() => onUpdateOrder({ cannotBeServed: true })} title="Can't be served">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" transform="rotate(45 6 6)"/></svg>
+                Can't serve
+              </button>
+            ) : (
+              <button className="cant-serve-btn active" onClick={() => onUpdateOrder({ cannotBeServed: false })} title="Mark as servable">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M10 3L4.5 8.5 2 6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                Can serve
+              </button>
+            )}
+            <button className="snooze-btn" onClick={() => setShowSnooze(true)} title="Snooze">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.1"/><path d="M6 3v3l2 1.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/></svg>
+              Snooze
+            </button>
+            {snoozedUntil && (
+              <>
+                <span className="snoozed-badge">
+                  Snoozed until {new Date(snoozedUntil).toLocaleString()}
+                </span>
+                <button className="unsnooze-btn" onClick={() => onUpdateOrder({ snoozedUntil: null })} title="Unsnooze">
+                  Unsnooze
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -516,6 +668,15 @@ function FollowUpCard({ fo, data, onSave, onMoveBack, onPriorityChange, onComple
           }}
           onClose={() => setEditingOrder(null)}
         />
+      )}
+
+      {showSnooze && (
+        <div className="modal-overlay" onClick={() => setShowSnooze(false)}>
+          <SnoozePopover
+            onSnooze={(until) => { onUpdateOrder({ snoozedUntil: until }); setShowSnooze(false); }}
+            onClose={() => setShowSnooze(false)}
+          />
+        </div>
       )}
     </div>
   );
