@@ -401,10 +401,16 @@ function saveToStorage(key, value) {
   } catch { /* ignore */ }
 }
 
-// Reverse geocode cache to avoid repeated API calls (persists across re-renders)
-const geoCache = {};
+// Reverse geocode cache — persisted to localStorage so it survives page refreshes
+const GEO_CACHE_STORAGE_KEY = 'carlift_geocache';
+const geoCache = loadFromStorage(GEO_CACHE_STORAGE_KEY, {});
+function persistGeoCache() {
+  saveToStorage(GEO_CACHE_STORAGE_KEY, geoCache);
+}
 // Track which order+field combos have already been geocoded so we don't redo them
 const geocodedKeys = new Set();
+// Prevent concurrent fetchOrders from overlapping geocode work
+let isFetchingOrders = false;
 
 /**
  * Parse DMS coordinates from text, e.g. 25°14'28.3"N 55°17'04.1"E
@@ -501,7 +507,10 @@ async function reverseGeocode(lat, lon) {
       || addr.suburb || addr.hamlet || addr.village
       || addr.town || addr.city_district || addr.city
       || data.name || null;
-    if (area) geoCache[key] = area;
+    if (area) {
+      geoCache[key] = area;
+      persistGeoCache();
+    }
     return area;
   } catch {
     return null;
@@ -723,6 +732,8 @@ export function AppProvider({ children }) {
       setLoading(false);
       return;
     }
+    if (isFetchingOrders) return;
+    isFetchingOrders = true;
     try {
       if (!hasFetchedOnce.current) setLoading(true);
       const response = await fetch(API_URL);
@@ -730,11 +741,9 @@ export function AppProvider({ children }) {
       const data = await response.json();
       const content = data.data || data.content || data || [];
       const raw = Array.isArray(content) ? content : (content && typeof content === 'object' ? [content] : []);
-      // Filter out orders without a maid assigned
       const withMaid = raw.filter(r => r.housemaidName && r.housemaidName.trim());
       const mapped = withMaid.map(mapApiOrder);
 
-      // Merge with Supabase first, then geocode the final result
       const needsGeo = (area) => !area || area === 'N/A' || area === 'Location N/A';
       const allProcessed = [...STATIC_EXAMPLES, ...mapped].filter(o => !deletedOrderIdsRef.current.has(o.id || o.contractId));
       let finalOrders;
@@ -747,7 +756,6 @@ export function AppProvider({ children }) {
           const oid = o.id || o.contractId;
           const sbVersion = sbMap.get(oid);
           if (!sbVersion) return o;
-          // Supabase has user edits, but always carry forward fresh API coords
           return {
             ...sbVersion,
             maidLat: o.maidLat ?? sbVersion.maidLat,
@@ -770,7 +778,7 @@ export function AppProvider({ children }) {
         sbUpsertOrders(allProcessed, 'api').catch(err => console.error('Supabase upsert orders failed:', err));
       }
 
-      // Apply cached geocode results to final merged orders
+      // ── Apply geocode cache (localStorage-backed, so instant even after refresh) ──
       for (const order of finalOrders) {
         if (needsGeo(order.pickupArea) && order.maidLat && order.maidLong) {
           const cacheKey = `${order.maidLat.toFixed(4)},${order.maidLong.toFixed(4)}`;
@@ -789,61 +797,71 @@ export function AppProvider({ children }) {
         }
       }
 
-      // Collect geocode tasks from FINAL orders (after merge + cache)
-      const geoTasks = [];
+      // ── Collect UNIQUE coords that still need geocoding ──
+      // De-duplicate: many orders share the same area, so one API call resolves many orders
+      const uniqueCoords = new Map();
       for (const order of finalOrders) {
         const oid = order.id || order.contractId;
-        if (needsGeo(order.pickupArea) && order.maidLat && order.maidLong && !geocodedKeys.has(`${oid}-pickup`)) {
-          geoTasks.push({ field: 'pickup', lat: order.maidLat, lon: order.maidLong, oid });
+        if (needsGeo(order.pickupArea) && order.maidLat && order.maidLong) {
+          const key = `${order.maidLat.toFixed(4)},${order.maidLong.toFixed(4)}`;
+          if (!uniqueCoords.has(key)) uniqueCoords.set(key, { lat: order.maidLat, lon: order.maidLong, targets: [] });
+          uniqueCoords.get(key).targets.push({ oid, field: 'pickup' });
         }
-        if (needsGeo(order.dropoffArea) && order.clientLat && order.clientLong && !geocodedKeys.has(`${oid}-dropoff`)) {
-          geoTasks.push({ field: 'dropoff', lat: order.clientLat, lon: order.clientLong, oid });
+        if (needsGeo(order.dropoffArea) && order.clientLat && order.clientLong) {
+          const key = `${order.clientLat.toFixed(4)},${order.clientLong.toFixed(4)}`;
+          if (!uniqueCoords.has(key)) uniqueCoords.set(key, { lat: order.clientLat, lon: order.clientLong, targets: [] });
+          uniqueCoords.get(key).targets.push({ oid, field: 'dropoff' });
         }
+      }
+
+      // ── Await ALL geocoding before rendering (zero N/As for orders with coords) ──
+      const coordEntries = [...uniqueCoords.entries()];
+      for (let i = 0; i < coordEntries.length; i++) {
+        const [, { lat, lon, targets }] = coordEntries[i];
+        const area = await reverseGeocode(lat, lon);
+        if (area) {
+          for (const { oid, field } of targets) {
+            const order = finalOrders.find(o => (o.id || o.contractId) === oid);
+            if (!order) continue;
+            if (field === 'pickup') {
+              order.maidLocation = area;
+              order.pickupArea = area;
+            } else {
+              order.clientLocation = area;
+              order.clientArea = area;
+              order.dropoffArea = area;
+            }
+            geocodedKeys.add(`${oid}-${field}`);
+          }
+        }
+        if (i < coordEntries.length - 1) await new Promise(r => setTimeout(r, 1100));
       }
 
       setOrders(finalOrders);
 
-      // Background geocode remaining N/A locations and persist to Supabase
-      if (geoTasks.length > 0) {
-        (async () => {
-          for (let i = 0; i < geoTasks.length; i++) {
-            const task = geoTasks[i];
-            const area = await reverseGeocode(task.lat, task.lon);
-            if (area) {
-              geocodedKeys.add(`${task.oid}-${task.field}`);
-              setOrders(prev => {
-                const updated = prev.map(o => {
-                  const oid = o.id || o.contractId;
-                  if (oid !== task.oid) return o;
-                  if (task.field === 'pickup') {
-                    return { ...o, maidLocation: area, pickupArea: area };
-                  } else {
-                    return { ...o, clientLocation: area, clientArea: area, dropoffArea: area };
-                  }
-                });
-                // Persist geocoded location to Supabase so it survives re-fetches
-                const updatedOrder = updated.find(o => (o.id || o.contractId) === task.oid);
-                if (updatedOrder) {
-                  sbUpsertOrders([updatedOrder], 'api').catch(err => console.error('Supabase persist geocode failed:', err));
-                }
-                return updated;
-              });
-            }
-            if (i < geoTasks.length - 1) await new Promise(r => setTimeout(r, 1100));
-          }
-        })();
+      // Persist all freshly geocoded orders to Supabase in one batch
+      if (coordEntries.length > 0) {
+        const touchedOids = new Set();
+        for (const [, { targets }] of coordEntries) {
+          for (const { oid } of targets) touchedOids.add(oid);
+        }
+        const ordersToSync = finalOrders.filter(o => touchedOids.has(o.id || o.contractId));
+        if (ordersToSync.length > 0) {
+          sbUpsertOrders(ordersToSync, 'api').catch(err => console.error('Supabase persist geocode failed:', err));
+        }
       }
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
       hasFetchedOnce.current = true;
+      isFetchingOrders = false;
     }
   }, []);
 
   useEffect(() => {
     fetchOrders();
-    const interval = setInterval(fetchOrders, 10000);
+    const interval = setInterval(fetchOrders, 30000);
     return () => clearInterval(interval);
 
     // Note: orders realtime subscription is not needed here because
