@@ -6,6 +6,7 @@ import {
   upsertFollowUpOrder,
   upsertFollowUpData,
   deleteFollowUpOrder,
+  updateFollowUpOrderData,
   insertHistoryOrder,
   subscribeToFollowUp,
   subscribeToHistory,
@@ -770,6 +771,18 @@ export function AppProvider({ children }) {
     }
   }, []);
 
+  const updateFollowUpOrderInContext = useCallback(async (orderId, updates) => {
+    let mergedOrder = null;
+    setFollowUpOrders(prev => prev.map(fo => {
+      if (fo.orderId !== orderId) return fo;
+      mergedOrder = { ...fo.order, ...updates };
+      return { ...fo, order: mergedOrder };
+    }));
+    if (mergedOrder) {
+      try { await updateFollowUpOrderData(orderId, mergedOrder); } catch (err) { console.error('Supabase update follow-up order failed:', err); }
+    }
+  }, []);
+
   const deleteOrder = useCallback(async (orderId) => {
     setOrders(prev => prev.filter(o => (o.id || o.contractId) !== orderId));
     try { await deleteOrderFromDb(orderId); } catch (err) { console.error('Supabase delete order failed:', err); }
@@ -800,6 +813,7 @@ export function AppProvider({ children }) {
       updateOrder,
       deleteOrder,
       updateHistoryOrderData,
+      updateFollowUpOrderInContext,
     }}>
       {children}
     </AppContext.Provider>

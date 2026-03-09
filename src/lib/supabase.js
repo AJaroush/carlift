@@ -49,6 +49,14 @@ export async function upsertFollowUpOrder(entry) {
   if (error) throw error;
 }
 
+export async function updateFollowUpOrderData(orderId, orderData) {
+  const { error } = await supabase
+    .from('follow_up_orders')
+    .update({ order_data: orderData })
+    .eq('order_id', orderId);
+  if (error) throw error;
+}
+
 export async function deleteFollowUpOrder(orderId) {
   const { error } = await supabase
     .from('follow_up_orders')

@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import EditOrderModal from '../components/EditOrderModal';
 
 const ARRIVAL_OPTIONS = ['', 'Yes', 'No', 'Failed to reach'];
 const TRANSPORT_OPTIONS = ['', 'Carlift', 'Taxi', 'Public transport'];
@@ -11,7 +12,7 @@ const MAX_FOLLOWUP_DAYS = 30;
 const EMPTY_DAY = { arrivalStatus: '', actualTransport: '', delayed: false, reason: '', notes: '' };
 
 export default function FollowUpPage() {
-  const { followUpOrders, followUpData, updateFollowUp, moveBackToWaiting, completeFollowUp } = useApp();
+  const { followUpOrders, followUpData, updateFollowUp, moveBackToWaiting, completeFollowUp, updateFollowUpOrderInContext } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [dayFilter, setDayFilter] = useState('all'); // 'all', 1, 2, 3
 
@@ -202,6 +203,7 @@ export default function FollowUpPage() {
             onMoveBack={() => moveBackToWaiting(fo.orderId)}
             onPriorityChange={(p) => updateFollowUp(fo.orderId, { priority: p })}
             onComplete={() => { if (window.confirm('Mark this maid as follow-up complete? She will be moved to History.')) completeFollowUp(fo.orderId); }}
+            onUpdateOrder={(updates) => updateFollowUpOrderInContext(fo.orderId, updates)}
           />
         ))}
 
@@ -224,6 +226,7 @@ export default function FollowUpPage() {
             onMoveBack={() => moveBackToWaiting(fo.orderId)}
             onPriorityChange={(p) => updateFollowUp(fo.orderId, { priority: p })}
             onComplete={() => { if (window.confirm('Mark this maid as follow-up complete? She will be moved to History.')) completeFollowUp(fo.orderId); }}
+            onUpdateOrder={(updates) => updateFollowUpOrderInContext(fo.orderId, updates)}
           />
         ))}
       </div>
@@ -275,8 +278,9 @@ function ReasonField({ reason, onChange }) {
   );
 }
 
-function FollowUpCard({ fo, data, onSave, onMoveBack, onPriorityChange, onComplete }) {
+function FollowUpCard({ fo, data, onSave, onMoveBack, onPriorityChange, onComplete, onUpdateOrder }) {
   const order = fo.order;
+  const [editingOrder, setEditingOrder] = useState(null);
   const now = new Date();
 
   const transferDate = order.transferDate ? new Date(order.transferDate.replace(' ', 'T')) : null;
@@ -343,7 +347,14 @@ function FollowUpCard({ fo, data, onSave, onMoveBack, onPriorityChange, onComple
         <div className="fu-card-info-row">
           <div className="fu-card-info-item">
             <span className="fu-card-label">MAID</span>
-            <span className="fu-card-maid-name">{order.housemaidName || '—'}</span>
+            <span className="fu-card-maid-name">
+              {order.housemaidName || '—'}
+              <button className="edit-order-btn" onClick={() => setEditingOrder(order)} title="Edit order">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M8.5 1.5l2 2-7 7H1.5V8.5l7-7z" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            </span>
             {order.housemaidPhone && (
               <span className="fu-card-sub">{order.housemaidPhone}</span>
             )}
@@ -495,6 +506,17 @@ function FollowUpCard({ fo, data, onSave, onMoveBack, onPriorityChange, onComple
           </button>
         </div>
       </div>
+
+      {editingOrder && (
+        <EditOrderModal
+          order={editingOrder}
+          onSave={(updates) => {
+            onUpdateOrder(updates);
+            setEditingOrder(null);
+          }}
+          onClose={() => setEditingOrder(null)}
+        />
+      )}
     </div>
   );
 }
