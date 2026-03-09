@@ -420,19 +420,87 @@ function parseDMS(text) {
   return { lat, lon };
 }
 
+/**
+ * Extract lat/lon from any text: DMS, decimal pairs, Google Maps URLs, etc.
+ * Returns { lat, lon } or null.
+ */
+function extractCoords(text) {
+  if (!text) return null;
+  const dms = parseDMS(text);
+  if (dms) return dms;
+
+  // Google Maps URL patterns: @lat,lon or q=lat,lon or ll=lat,lon or /place/lat,lon
+  const urlPatterns = [
+    /@(-?\d+\.\d+),(-?\d+\.\d+)/,
+    /[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/,
+    /[?&]ll=(-?\d+\.\d+),(-?\d+\.\d+)/,
+    /\/place\/(-?\d+\.\d+),(-?\d+\.\d+)/,
+  ];
+  for (const re of urlPatterns) {
+    const m = text.match(re);
+    if (m) {
+      const lat = +m[1], lon = +m[2];
+      if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) return { lat, lon };
+    }
+  }
+
+  // General decimal pair: 25.123, 55.456 (2+ decimal places)
+  const decMatch = text.match(/(-?\d{1,3}\.\d{2,})\s*[,\s]\s*(-?\d{1,3}\.\d{2,})/);
+  if (decMatch) {
+    const lat = +decMatch[1], lon = +decMatch[2];
+    if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) return { lat, lon };
+  }
+
+  return null;
+}
+
+// Known Dubai/UAE area keywords for fallback extraction from raw text
+const KNOWN_AREAS = [
+  'Victory Heights', 'Arabian Ranches', 'Palm Jumeirah', 'Business Bay', 'Silicon Oasis',
+  'Sports City', 'Motor City', 'International City', 'Discovery Gardens', 'Dubai Hills',
+  'Dubai Marina', 'Dubai Downtown', 'Barsha Heights', 'Emirates Hills', 'Damac Hills',
+  'Town Square', 'Tilal Al Ghaf', 'Nad Al Sheba', 'Yas Island', 'Khalifa City',
+  'Dubai Land', 'Dubailand', 'Creek Beach', 'Creek Harbour', 'Al Raha Beach', 'Wadi Al Safa',
+  'Bur Dubai', 'Al Barsha', 'Al Quoz', 'Al Nahda', 'Al Jafiliya', 'Al Jaffiliya',
+  'Al Rigga', 'Al Mankhool', 'Al Garhoud', 'Al Muhaisnah', 'Al Qusais', 'Al Safa',
+  'Al Wasl', 'Al Satwa', 'Al Furjan', 'Al Reef', 'Al Murar', 'Al Danah', 'Al Bada',
+  'Al Muneera', 'Al Rahba', 'Al Ranim', 'Al Khail',
+  'Abu Hail', 'Umm Suqeim', 'Umm Ramool', 'Um Ramool', 'Oud Metha',
+  'Jumeirah Garden City', 'Jumeirah Park', 'Jumeirah Village', 'Jumeirah Islands',
+  'JLT', 'JVC', 'JBR', 'DIFC', 'DIP', 'DSO', 'Downtown', 'Marina', 'Satwa', 'Deira', 'Naif',
+  'Karama', 'Mirdif', 'Rashidiya', 'Jumeirah', 'Jumeriah', 'Arjan', 'Tecom',
+  'Greens', 'Views', 'Springs', 'Meadows', 'Lakes', 'Remraam', 'Mudon', 'Layan',
+  'Villanova', 'Warsan', 'Saadiyat', 'Sidra', 'Sharjah',
+];
+
+/**
+ * Scan raw text for a known Dubai area name. Returns the area or null.
+ */
+function findKnownArea(text) {
+  if (!text) return null;
+  const upper = text.toUpperCase();
+  for (const area of KNOWN_AREAS) {
+    if (upper.includes(area.toUpperCase())) return area;
+  }
+  return null;
+}
+
 async function reverseGeocode(lat, lon) {
   if (!lat || !lon) return null;
   const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
   if (geoCache[key]) return geoCache[key];
   try {
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=14`,
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=16&addressdetails=1`,
       { headers: { 'User-Agent': 'CarliftOps/1.0' } }
     );
     if (!res.ok) return null;
     const data = await res.json();
     const addr = data.address || {};
-    const area = addr.neighbourhood || addr.suburb || addr.town || addr.city_district || addr.city || data.name || null;
+    const area = addr.neighbourhood || addr.residential || addr.quarter
+      || addr.suburb || addr.hamlet || addr.village
+      || addr.town || addr.city_district || addr.city
+      || data.name || null;
     if (area) geoCache[key] = area;
     return area;
   } catch {
@@ -596,44 +664,39 @@ export function AppProvider({ children }) {
     const maidAddr = cleanAddress(raw.maidAddress);
     const clientAddr = cleanAddress(raw.ClientAddress);
 
-    // Extract lat/long from API fields, DMS in address text, or decimal coords in text
+    // Extract lat/long from API fields, or from address text (URLs, DMS, decimal)
     let maidLat = raw.maidLat && raw.maidLat !== -1 ? raw.maidLat : null;
     let maidLong = raw.maidLong && raw.maidLong !== -1 ? raw.maidLong : null;
     let clientLat = raw.clientLat && raw.clientLat !== -1 ? raw.clientLat : null;
     let clientLong = raw.clientLong && raw.clientLong !== -1 ? raw.clientLong : null;
 
-    // Try to extract coords from DMS or decimal in address text when API coords missing
     if (!maidLat && raw.maidAddress) {
-      const dms = parseDMS(raw.maidAddress);
-      if (dms) { maidLat = dms.lat; maidLong = dms.lon; }
-      else {
-        const decMatch = raw.maidAddress.match(/(\d{1,2}\.\d{4,})\s*,\s*(\d{1,3}\.\d{4,})/);
-        if (decMatch) { maidLat = +decMatch[1]; maidLong = +decMatch[2]; }
-      }
+      const coords = extractCoords(raw.maidAddress);
+      if (coords) { maidLat = coords.lat; maidLong = coords.lon; }
     }
     if (!clientLat && raw.ClientAddress) {
-      const dms = parseDMS(raw.ClientAddress);
-      if (dms) { clientLat = dms.lat; clientLong = dms.lon; }
-      else {
-        const decMatch = raw.ClientAddress.match(/(\d{1,2}\.\d{4,})\s*,\s*(\d{1,3}\.\d{4,})/);
-        if (decMatch) { clientLat = +decMatch[1]; clientLong = +decMatch[2]; }
-      }
+      const coords = extractCoords(raw.ClientAddress);
+      if (coords) { clientLat = coords.lat; clientLong = coords.lon; }
     }
+
+    // Fallback: if cleanAddress failed, search for known area names in the raw text
+    const maidArea = maidAddr || findKnownArea(raw.maidAddress);
+    const clientArea = clientAddr || findKnownArea(raw.ClientAddress);
 
     return {
       id: raw.id || String(raw.contractId),
       contractId: raw.contractId ? String(raw.contractId) : raw.id,
       clientName: raw.clientName || 'N/A',
-      clientLocation: clientAddr || 'Location N/A',
-      clientArea: clientAddr || 'N/A',
+      clientLocation: clientArea || 'Location N/A',
+      clientArea: clientArea || 'N/A',
       clientId: raw.clientId || '',
       housemaidName: raw.housemaidName || 'N/A',
       housemaidPhone: raw.housemaidPhoneNumber && raw.housemaidPhoneNumber !== '***' ? raw.housemaidPhoneNumber : 'Phone: N/A',
       housemaidStatus: raw.housemaidStatus || '',
       housemaidId: raw.housemaidId || '',
-      maidLocation: maidAddr || 'Location N/A',
-      pickupArea: maidAddr || 'N/A',
-      dropoffArea: clientAddr || 'N/A',
+      maidLocation: maidArea || 'Location N/A',
+      pickupArea: maidArea || 'N/A',
+      dropoffArea: clientArea || 'N/A',
       creationDate: raw.creationDate || '',
       transferDate: raw.transferDate || '',
       typeOfTheContractLabel: raw.typeOfTheContractLabel || '',
