@@ -525,40 +525,42 @@ async function reverseGeocode(lat, lon) {
   if (!lat || !lon) return null;
   const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
   if (geoCache[key]) return geoCache[key];
-
-  // Helper: fetch Nominatim at a given zoom and try to match a known area
-  async function tryZoom(zoom) {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=${zoom}&addressdetails=1`,
-      { headers: { 'User-Agent': 'CarliftOps/1.0' } }
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=16&addressdetails=1`,
+      { headers: { 'User-Agent': 'CarliftOps/1.0' }, signal: controller.signal }
     );
+    clearTimeout(timeout);
     if (!res.ok) return null;
     const data = await res.json();
     const addr = data.address || {};
-    const candidates = [
+
+    // First try matching against our known areas list for clean display names
+    const allText = [
       addr.neighbourhood, addr.residential, addr.quarter,
       addr.suburb, addr.hamlet, addr.village,
       addr.town, addr.city_district, data.name,
       data.display_name,
-    ].filter(Boolean);
-    const allText = candidates.join(' ');
-    return findKnownArea(allText);
-  }
-
-  try {
-    // Try progressively broader zoom levels until we match a known area
-    // zoom 16 = neighbourhood, 14 = suburb, 12 = district, 10 = city
-    for (const zoom of [16, 14, 12, 10]) {
-      const matched = await tryZoom(zoom);
-      if (matched) {
-        geoCache[key] = matched;
-        persistGeoCache();
-        return matched;
-      }
-      // Rate limit between Nominatim calls
-      await new Promise(r => setTimeout(r, 1100));
+    ].filter(Boolean).join(' ');
+    const knownMatch = findKnownArea(allText);
+    if (knownMatch) {
+      geoCache[key] = knownMatch;
+      persistGeoCache();
+      return knownMatch;
     }
-    return null; // No known area found at any zoom — don't cache junk
+
+    // Fallback: accept whatever Nominatim gives us
+    const area = addr.neighbourhood || addr.residential || addr.quarter
+      || addr.suburb || addr.hamlet || addr.village
+      || addr.town || addr.city_district || addr.city
+      || data.name || null;
+    if (area) {
+      geoCache[key] = area;
+      persistGeoCache();
+    }
+    return area;
   } catch {
     return null;
   }
@@ -882,40 +884,76 @@ export function AppProvider({ children }) {
         }
       }
 
-      // Render immediately with whatever we have (cache hits are already resolved)
-      setOrders(finalOrders);
-
-      // Background geocode remaining N/As (non-blocking so UI isn't stuck)
       const coordEntries = [...uniqueCoords.entries()];
-      if (coordEntries.length > 0) {
-        (async () => {
-          for (let i = 0; i < coordEntries.length; i++) {
-            const [, { lat, lon, targets }] = coordEntries[i];
-            const area = await reverseGeocode(lat, lon);
-            if (area) {
-              setOrders(prev => {
-                const updated = prev.map(o => {
-                  const oid = o.id || o.contractId;
-                  const match = targets.find(t => t.oid === oid);
-                  if (!match) return o;
-                  if (match.field === 'pickup') {
-                    return { ...o, maidLocation: area, pickupArea: area };
-                  } else {
-                    return { ...o, clientLocation: area, clientArea: area, dropoffArea: area };
-                  }
-                });
-                // Persist to Supabase so merge never reverts these back to N/A
-                const touchedOrders = updated.filter(o => targets.some(t => t.oid === (o.id || o.contractId)));
-                if (touchedOrders.length > 0) {
-                  sbUpsertOrders(touchedOrders, 'api').catch(err => console.error('Supabase persist geocode failed:', err));
-                }
-                return updated;
-              });
-              for (const { oid, field } of targets) geocodedKeys.add(`${oid}-${field}`);
-            }
-            if (i < coordEntries.length - 1) await new Promise(r => setTimeout(r, 1100));
+      const isFirstLoad = !hasFetchedOnce.current;
+
+      // Helper: apply geocode result to all orders sharing that coord
+      const applyGeoResult = (area, targets) => {
+        for (const { oid, field } of targets) {
+          const order = finalOrders.find(o => (o.id || o.contractId) === oid);
+          if (!order) continue;
+          if (field === 'pickup') {
+            order.maidLocation = area;
+            order.pickupArea = area;
+          } else {
+            order.clientLocation = area;
+            order.clientArea = area;
+            order.dropoffArea = area;
           }
-        })();
+          geocodedKeys.add(`${oid}-${field}`);
+        }
+      };
+
+      if (isFirstLoad && coordEntries.length > 0) {
+        // ── FIRST LOAD: await all geocoding so user never sees N/A ──
+        for (let i = 0; i < coordEntries.length; i++) {
+          const [, { lat, lon, targets }] = coordEntries[i];
+          const area = await reverseGeocode(lat, lon);
+          if (area) applyGeoResult(area, targets);
+          if (i < coordEntries.length - 1) await new Promise(r => setTimeout(r, 1100));
+        }
+        setOrders(finalOrders);
+        // Batch persist all geocoded orders to Supabase
+        const touchedOids = new Set();
+        for (const [, { targets }] of coordEntries) {
+          for (const { oid } of targets) touchedOids.add(oid);
+        }
+        const toSync = finalOrders.filter(o => touchedOids.has(o.id || o.contractId));
+        if (toSync.length > 0) {
+          sbUpsertOrders(toSync, 'api').catch(err => console.error('Supabase persist geocode failed:', err));
+        }
+      } else {
+        // ── SUBSEQUENT FETCHES: render immediately, geocode new ones in background ──
+        setOrders(finalOrders);
+        if (coordEntries.length > 0) {
+          (async () => {
+            for (let i = 0; i < coordEntries.length; i++) {
+              const [, { lat, lon, targets }] = coordEntries[i];
+              const area = await reverseGeocode(lat, lon);
+              if (area) {
+                setOrders(prev => {
+                  const updated = prev.map(o => {
+                    const oid = o.id || o.contractId;
+                    const match = targets.find(t => t.oid === oid);
+                    if (!match) return o;
+                    if (match.field === 'pickup') {
+                      return { ...o, maidLocation: area, pickupArea: area };
+                    } else {
+                      return { ...o, clientLocation: area, clientArea: area, dropoffArea: area };
+                    }
+                  });
+                  const touchedOrders = updated.filter(o => targets.some(t => t.oid === (o.id || o.contractId)));
+                  if (touchedOrders.length > 0) {
+                    sbUpsertOrders(touchedOrders, 'api').catch(err => console.error('Supabase persist geocode failed:', err));
+                  }
+                  return updated;
+                });
+                for (const { oid, field } of targets) geocodedKeys.add(`${oid}-${field}`);
+              }
+              if (i < coordEntries.length - 1) await new Promise(r => setTimeout(r, 1100));
+            }
+          })();
+        }
       }
     } catch (err) {
       setError(err.message);
