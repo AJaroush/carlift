@@ -671,10 +671,44 @@ export function AppProvider({ children }) {
       const withMaid = raw.filter(r => r.housemaidName && r.housemaidName.trim());
       const mapped = withMaid.map(mapApiOrder);
 
-      // Apply cached geocode results immediately (no API call needed)
+      // Merge with Supabase first, then geocode the final result
       const needsGeo = (area) => !area || area === 'N/A' || area === 'Location N/A';
-      for (const order of mapped) {
-        const oid = order.id || order.contractId;
+      const allProcessed = [...STATIC_EXAMPLES, ...mapped].filter(o => !deletedOrderIdsRef.current.has(o.id || o.contractId));
+      let finalOrders;
+      try {
+        const sbOrdersRaw = await sbFetchOrders();
+        const sbOrders = sbOrdersRaw.filter(o => !deletedOrderIdsRef.current.has(o.id || o.contractId));
+        const sbMap = new Map(sbOrders.map(o => [o.id || o.contractId, o]));
+
+        const merged = allProcessed.map(o => {
+          const oid = o.id || o.contractId;
+          const sbVersion = sbMap.get(oid);
+          if (!sbVersion) return o;
+          // Supabase has user edits, but always carry forward fresh API coords
+          return {
+            ...sbVersion,
+            maidLat: o.maidLat ?? sbVersion.maidLat,
+            maidLong: o.maidLong ?? sbVersion.maidLong,
+            clientLat: o.clientLat ?? sbVersion.clientLat,
+            clientLong: o.clientLong ?? sbVersion.clientLong,
+          };
+        });
+
+        const apiIds = new Set(allProcessed.map(o => o.id || o.contractId));
+        const manualOnly = sbOrders.filter(o => !apiIds.has(o.id || o.contractId));
+        finalOrders = [...merged, ...manualOnly];
+
+        const newApiOrders = allProcessed.filter(o => !sbMap.has(o.id || o.contractId));
+        if (newApiOrders.length > 0) {
+          sbUpsertOrders(newApiOrders, 'api').catch(err => console.error('Supabase upsert orders failed:', err));
+        }
+      } catch {
+        finalOrders = allProcessed;
+        sbUpsertOrders(allProcessed, 'api').catch(err => console.error('Supabase upsert orders failed:', err));
+      }
+
+      // Apply cached geocode results to final merged orders
+      for (const order of finalOrders) {
         if (needsGeo(order.pickupArea) && order.maidLat && order.maidLong) {
           const cacheKey = `${order.maidLat.toFixed(4)},${order.maidLong.toFixed(4)}`;
           if (geoCache[cacheKey]) {
@@ -692,67 +726,45 @@ export function AppProvider({ children }) {
         }
       }
 
-      // Collect tasks that still need geocoding (skip already-geocoded order+field combos)
+      // Collect geocode tasks from FINAL orders (after merge + cache)
       const geoTasks = [];
-      for (const order of mapped) {
+      for (const order of finalOrders) {
         const oid = order.id || order.contractId;
         if (needsGeo(order.pickupArea) && order.maidLat && order.maidLong && !geocodedKeys.has(`${oid}-pickup`)) {
-          geoTasks.push({ order, field: 'pickup', lat: order.maidLat, lon: order.maidLong, oid });
+          geoTasks.push({ field: 'pickup', lat: order.maidLat, lon: order.maidLong, oid });
         }
         if (needsGeo(order.dropoffArea) && order.clientLat && order.clientLong && !geocodedKeys.has(`${oid}-dropoff`)) {
-          geoTasks.push({ order, field: 'dropoff', lat: order.clientLat, lon: order.clientLong, oid });
+          geoTasks.push({ field: 'dropoff', lat: order.clientLat, lon: order.clientLong, oid });
         }
       }
 
-      // Merge with Supabase: prefer Supabase version for edited orders
-      // Filter out manually deleted orders so they don't reappear
-      const allProcessed = [...STATIC_EXAMPLES, ...mapped].filter(o => !deletedOrderIdsRef.current.has(o.id || o.contractId));
-      try {
-        const sbOrdersRaw = await sbFetchOrders();
-        // Also filter deleted IDs from Supabase results
-        const sbOrders = sbOrdersRaw.filter(o => !deletedOrderIdsRef.current.has(o.id || o.contractId));
-        const sbMap = new Map(sbOrders.map(o => [o.id || o.contractId, o]));
+      setOrders(finalOrders);
 
-        // For API orders, use Supabase version if it exists (user may have edited it)
-        const merged = allProcessed.map(o => {
-          const oid = o.id || o.contractId;
-          const sbVersion = sbMap.get(oid);
-          return sbVersion || o;
-        });
-
-        // Add manual-only orders (not in API batch)
-        const apiIds = new Set(allProcessed.map(o => o.id || o.contractId));
-        const manualOnly = sbOrders.filter(o => !apiIds.has(o.id || o.contractId));
-
-        setOrders([...merged, ...manualOnly]);
-
-        // Upsert any new API orders that aren't in Supabase yet (skip deleted ones)
-        const newApiOrders = allProcessed.filter(o => !sbMap.has(o.id || o.contractId));
-        if (newApiOrders.length > 0) {
-          sbUpsertOrders(newApiOrders, 'api').catch(err => console.error('Supabase upsert orders failed:', err));
-        }
-      } catch {
-        // Supabase unavailable — use API data directly
-        setOrders(allProcessed);
-        sbUpsertOrders(allProcessed, 'api').catch(err => console.error('Supabase upsert orders failed:', err));
-      }
-      // Background geocode remaining N/A locations (non-blocking)
+      // Background geocode remaining N/A locations and persist to Supabase
       if (geoTasks.length > 0) {
         (async () => {
           for (let i = 0; i < geoTasks.length; i++) {
             const task = geoTasks[i];
-            geocodedKeys.add(`${task.oid}-${task.field}`);
             const area = await reverseGeocode(task.lat, task.lon);
             if (area) {
-              setOrders(prev => prev.map(o => {
-                const oid = o.id || o.contractId;
-                if (oid !== task.oid) return o;
-                if (task.field === 'pickup') {
-                  return { ...o, maidLocation: area, pickupArea: area };
-                } else {
-                  return { ...o, clientLocation: area, clientArea: area, dropoffArea: area };
+              geocodedKeys.add(`${task.oid}-${task.field}`);
+              setOrders(prev => {
+                const updated = prev.map(o => {
+                  const oid = o.id || o.contractId;
+                  if (oid !== task.oid) return o;
+                  if (task.field === 'pickup') {
+                    return { ...o, maidLocation: area, pickupArea: area };
+                  } else {
+                    return { ...o, clientLocation: area, clientArea: area, dropoffArea: area };
+                  }
+                });
+                // Persist geocoded location to Supabase so it survives re-fetches
+                const updatedOrder = updated.find(o => (o.id || o.contractId) === task.oid);
+                if (updatedOrder) {
+                  sbUpsertOrders([updatedOrder], 'api').catch(err => console.error('Supabase persist geocode failed:', err));
                 }
-              }));
+                return updated;
+              });
             }
             if (i < geoTasks.length - 1) await new Promise(r => setTimeout(r, 1100));
           }
