@@ -1048,11 +1048,11 @@ export function AppProvider({ children }) {
 
   useEffect(() => {
     fetchOrders();
-    const interval = setInterval(fetchOrders, 30000);
+    const interval = setInterval(fetchOrders, 120000);
     return () => clearInterval(interval);
 
     // Note: orders realtime subscription is not needed here because
-    // fetchOrders already runs every 10s and merges manual orders.
+    // fetchOrders already runs every 2min and merges manual orders.
     // But we add it so manual orders from OTHER users appear faster.
   }, [fetchOrders]);
 
