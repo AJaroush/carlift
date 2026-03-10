@@ -61,7 +61,9 @@ export default function FollowUpPage() {
 
   const snoozedOrders = useMemo(() => {
     const nowIso = new Date().toISOString();
-    return followUpOrders.filter(fo => fo.order?.snoozedUntil && fo.order.snoozedUntil > nowIso);
+    return followUpOrders
+      .filter(fo => fo.order?.snoozedUntil && fo.order.snoozedUntil > nowIso)
+      .sort((a, b) => a.order.snoozedUntil.localeCompare(b.order.snoozedUntil));
   }, [followUpOrders]);
 
   // Auto-escalate to Urgent any order with follow-up > 3 days
