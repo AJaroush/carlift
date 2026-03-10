@@ -20,6 +20,14 @@ export default function CarliftsPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingDriver, setEditingDriver] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [search, setSearch] = useState('');
+
+  const filteredDrivers = drivers.filter(d => {
+    if (!search.trim()) return true;
+    const q = search.trim().toLowerCase();
+    return (d.phone || '').toLowerCase().includes(q)
+      || (d.name || '').toLowerCase().includes(q);
+  });
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -76,14 +84,23 @@ export default function CarliftsPage() {
       <div className="carlifts-header">
         <div className="carlifts-title-row">
           <h1 className="carlifts-title">Carlifts</h1>
-          <span className="driver-count">{drivers.length} Drivers</span>
+          <span className="driver-count">{filteredDrivers.length} Drivers</span>
         </div>
-        <button className="add-carlift-btn" onClick={openAddModal}>
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M7 1v12M1 7h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-          </svg>
-          Add New Carlift
-        </button>
+        <div className="carlifts-actions-row">
+          <input
+            className="carlifts-search"
+            type="text"
+            placeholder="Search by name or phone..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <button className="add-carlift-btn" onClick={openAddModal}>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M7 1v12M1 7h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+            Add New Carlift
+          </button>
+        </div>
       </div>
 
       <div className="carlifts-table-container">
@@ -102,7 +119,7 @@ export default function CarliftsPage() {
             </tr>
           </thead>
           <tbody>
-            {drivers.map((driver) => (
+            {filteredDrivers.map((driver) => (
               <DriverRow
                 key={driver.id}
                 driver={driver}

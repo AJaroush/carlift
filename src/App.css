@@ -718,6 +718,25 @@
   margin-bottom: 24px;
 }
 
+.carlifts-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.carlifts-search {
+  padding: 8px 14px;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  font-size: 13px;
+  width: 220px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.carlifts-search:focus {
+  border-color: #3B82F6;
+}
+
 .carlifts-title-row {
   display: flex;
   align-items: center;
@@ -1916,6 +1935,100 @@
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
+.driver-search-select {
+  position: relative;
+  max-width: 400px;
+  margin-bottom: 16px;
+}
+.driver-search-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #0F172A;
+  background: #fff;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+.driver-search-input:focus {
+  border-color: #3B82F6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+.driver-search-input::placeholder {
+  color: #64748B;
+}
+.driver-search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 50;
+  margin-top: 4px;
+}
+.driver-search-group-label {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #94A3B8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: #F8FAFC;
+  border-bottom: 1px solid #F1F5F9;
+}
+.driver-search-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.15s;
+}
+.driver-search-option:hover {
+  background: #F1F5F9;
+}
+.driver-search-option.selected {
+  background: #EFF6FF;
+}
+.dso-name {
+  font-weight: 500;
+  color: #0F172A;
+  min-width: 100px;
+}
+.dso-phone {
+  color: #64748B;
+  font-size: 12px;
+}
+.dso-reliability {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.dso-reliability.high { color: #16A34A; background: #F0FDF4; }
+.dso-reliability.mid { color: #D97706; background: #FFFBEB; }
+.dso-reliability.low { color: #DC2626; background: #FEF2F2; }
+.dso-price {
+  color: #3B82F6;
+  font-weight: 500;
+  font-size: 12px;
+  margin-left: auto;
+}
+.driver-search-empty {
+  padding: 12px;
+  text-align: center;
+  color: #94A3B8;
+  font-size: 13px;
+}
+
 .confirm-row {
   display: flex;
   align-items: flex-end;
@@ -2551,6 +2664,50 @@
 .move-back-btn:hover {
   background: #FEF2F2;
   border-color: #DC2626;
+}
+
+.history-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: #fff;
+  border: 1px solid #FCA5A5;
+  border-radius: 8px;
+  color: #DC2626;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.history-delete-btn:hover {
+  background: #FEE2E2;
+  border-color: #DC2626;
+}
+
+.history-edit-days-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: #fff;
+  border: 1px solid #93C5FD;
+  border-radius: 8px;
+  color: #2563EB;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.history-edit-days-btn:hover {
+  background: #EFF6FF;
+  border-color: #2563EB;
 }
 
 .fu-complete-btn {

@@ -17,6 +17,7 @@ import {
   updateOrderInDb,
   deleteOrderFromDb,
   updateHistoryOrder,
+  updateHistoryFollowUpData,
   deleteHistoryOrder,
   fetchDrivers as sbFetchDrivers,
   upsertDrivers as sbUpsertDrivers,
@@ -1299,6 +1300,24 @@ export function AppProvider({ children }) {
     } catch (err) { console.error('Supabase move history to follow-up failed:', err); }
   }, []);
 
+  const deleteHistoryFromContext = useCallback(async (orderId) => {
+    setHistoryOrders(prev => prev.filter(h => h.orderId !== orderId));
+    try { await deleteHistoryOrder(orderId); } catch (err) { console.error('Supabase delete history order failed:', err); }
+  }, []);
+
+  const updateHistoryFollowUp = useCallback(async (orderId, dayUpdates) => {
+    let fullData = null;
+    setHistoryOrders(prev => prev.map(ho => {
+      if (ho.orderId !== orderId) return ho;
+      const merged = { ...(ho.followUpData || {}), ...dayUpdates };
+      fullData = merged;
+      return { ...ho, followUpData: merged };
+    }));
+    if (fullData) {
+      try { await updateHistoryFollowUpData(orderId, fullData); } catch (err) { console.error('Supabase update history follow-up data failed:', err); }
+    }
+  }, []);
+
   const deleteOrder = useCallback(async (orderId) => {
     setOrders(prev => prev.filter(o => (o.id || o.contractId) !== orderId));
     deletedOrderIdsRef.current.add(orderId);
@@ -1333,6 +1352,8 @@ export function AppProvider({ children }) {
       updateHistoryOrderData,
       updateFollowUpOrderInContext,
       moveHistoryToFollowUp,
+      deleteHistoryFromContext,
+      updateHistoryFollowUp,
     }}>
       {children}
     </AppContext.Provider>

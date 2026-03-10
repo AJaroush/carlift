@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { suggestDrivers, suggestedPickupTime, formatTimeTo12h, addHours } from '../utils/clustering';
@@ -248,7 +248,11 @@ export default function TripCard({ trip }) {
                   const defaultReturn = order.returnTime || '';
                   const dutyVal = orderTimes[oid]?.duty ?? defaultDuty;
                   const returnVal = orderTimes[oid]?.ret ?? defaultReturn;
-                  const daysHired = 0;
+                  const creationDate = order.creationDate ? new Date(order.creationDate.replace(' ', 'T')) : null;
+                  const today = new Date(); today.setHours(0,0,0,0);
+                  const daysHired = creationDate
+                    ? Math.max(0, Math.floor((today - new Date(creationDate.getFullYear(), creationDate.getMonth(), creationDate.getDate())) / (1000 * 60 * 60 * 24)))
+                    : 0;
                   const setTime = (field, val) => setOrderTimes(prev => ({
                     ...prev,
                     [oid]: { ...prev[oid], [field]: val },
@@ -355,37 +359,12 @@ export default function TripCard({ trip }) {
                 </div>
               )}
 
-              <div className="driver-select-row">
-                <select
-                  className="driver-select"
-                  value={selectedDriverId}
-                  onChange={(e) => {
-                    setSelectedDriverId(e.target.value);
-                    const d = drivers.find(dr => dr.id === e.target.value);
-                    if (d) setCustomPrice(d.price);
-                  }}
-                >
-                  <option value="">Select a driver...</option>
-                  {suggestedDrivers.length > 0 && (
-                    <optgroup label="Suggested Drivers">
-                      {suggestedDrivers.map(d => (
-                        <option key={d.id} value={d.id}>
-                          {d.name} — {d.reliability} — AED {d.price}
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                  <optgroup label="All Active Drivers">
-                    {allActiveDrivers
-                      .filter(d => !suggestedDrivers.some(s => s.id === d.id))
-                      .map(d => (
-                        <option key={d.id} value={d.id}>
-                          {d.name} — {d.reliability} — AED {d.price}
-                        </option>
-                      ))}
-                  </optgroup>
-                </select>
-              </div>
+              <SearchableDriverSelect
+                drivers={allActiveDrivers}
+                suggestedDrivers={suggestedDrivers}
+                selectedDriverId={selectedDriverId}
+                onSelect={(d) => { setSelectedDriverId(d.id); setCustomPrice(d.price); }}
+              />
 
               {/* Driver Message Bubble */}
               {selectedDriverId && (
@@ -504,6 +483,79 @@ export default function TripCard({ trip }) {
             onSnooze={(until) => { updateOrder(snoozeOrderId, { snoozedUntil: until }); setSnoozeOrderId(null); }}
             onClose={() => setSnoozeOrderId(null)}
           />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SearchableDriverSelect({ drivers, suggestedDrivers, selectedDriverId, onSelect }) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const selected = drivers.find(d => d.id === selectedDriverId);
+  const q = query.toLowerCase();
+  const filtered = drivers.filter(d =>
+    !q || d.name?.toLowerCase().includes(q) || d.phone?.toLowerCase().includes(q)
+  );
+  const suggestedIds = new Set(suggestedDrivers.map(d => d.id));
+  const suggestedFiltered = filtered.filter(d => suggestedIds.has(d.id));
+  const otherFiltered = filtered.filter(d => !suggestedIds.has(d.id));
+
+  const handleSelect = (d) => {
+    onSelect(d);
+    setQuery('');
+    setOpen(false);
+  };
+
+  return (
+    <div className="driver-search-select" ref={wrapperRef}>
+      <input
+        className="driver-search-input"
+        type="text"
+        placeholder={selected ? `${selected.name} — ${selected.phone}` : 'Search driver by name or phone...'}
+        value={query}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+      />
+      {open && (
+        <div className="driver-search-dropdown">
+          {suggestedFiltered.length > 0 && (
+            <>
+              <div className="driver-search-group-label">Suggested</div>
+              {suggestedFiltered.map(d => (
+                <div key={d.id} className={`driver-search-option ${d.id === selectedDriverId ? 'selected' : ''}`} onClick={() => handleSelect(d)}>
+                  <span className="dso-name">{d.name}</span>
+                  <span className="dso-phone">{d.phone}</span>
+                  <span className={`dso-reliability ${d.reliability?.toLowerCase()}`}>{d.reliability}</span>
+                  <span className="dso-price">AED {d.price}</span>
+                </div>
+              ))}
+            </>
+          )}
+          {otherFiltered.length > 0 && (
+            <>
+              <div className="driver-search-group-label">All Drivers</div>
+              {otherFiltered.map(d => (
+                <div key={d.id} className={`driver-search-option ${d.id === selectedDriverId ? 'selected' : ''}`} onClick={() => handleSelect(d)}>
+                  <span className="dso-name">{d.name}</span>
+                  <span className="dso-phone">{d.phone}</span>
+                  <span className={`dso-reliability ${d.reliability?.toLowerCase()}`}>{d.reliability}</span>
+                  <span className="dso-price">AED {d.price}</span>
+                </div>
+              ))}
+            </>
+          )}
+          {filtered.length === 0 && <div className="driver-search-empty">No drivers found</div>}
         </div>
       )}
     </div>

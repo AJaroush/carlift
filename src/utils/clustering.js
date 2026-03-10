@@ -5,7 +5,7 @@
  * when coordinates are available, falling back to text-based area matching.
  */
 
-const GEO_RADIUS_KM = 5;
+const GEO_RADIUS_KM = 0.5;
 
 /**
  * Haversine distance between two lat/long points in km.
@@ -162,9 +162,26 @@ function extractAreaName(address) {
   return parts[0] || address;
 }
 
-function centroidNear(centroidLat, centroidLon, lat, lon) {
-  if (!centroidLat || !centroidLon || !lat || !lon) return false;
-  return haversineKm(centroidLat, centroidLon, lat, lon) <= GEO_RADIUS_KM;
+/**
+ * Check if two orders have nearby pickups.
+ * Uses coordinates when both have them, otherwise text matching.
+ */
+function pickupsNear(a, b) {
+  if (a.maidLat && a.maidLong && b.maidLat && b.maidLong) {
+    return haversineKm(a.maidLat, a.maidLong, b.maidLat, b.maidLong) <= GEO_RADIUS_KM;
+  }
+  return areasMatch(getPickupArea(a), getPickupArea(b));
+}
+
+/**
+ * Check if two orders have nearby dropoffs.
+ * Uses coordinates when both have them, otherwise text matching.
+ */
+function dropoffsNear(a, b) {
+  if (a.clientLat && a.clientLong && b.clientLat && b.clientLong) {
+    return haversineKm(a.clientLat, a.clientLong, b.clientLat, b.clientLong) <= GEO_RADIUS_KM;
+  }
+  return areasMatch(getDropoffArea(a), getDropoffArea(b));
 }
 
 export function clusterOrders(orders) {
@@ -173,26 +190,13 @@ export function clusterOrders(orders) {
   for (const order of orders) {
     let matched = false;
     for (const cluster of clusters) {
-      const pickupMatch = cluster.pickupCentroidLat
-        ? centroidNear(cluster.pickupCentroidLat, cluster.pickupCentroidLon, order.maidLat, order.maidLong)
-        : areasMatch(getPickupArea(cluster.orders[0]), getPickupArea(order));
-      const dropoffMatch = cluster.dropoffCentroidLat
-        ? centroidNear(cluster.dropoffCentroidLat, cluster.dropoffCentroidLon, order.clientLat, order.clientLong)
-        : areasMatch(getDropoffArea(cluster.orders[0]), getDropoffArea(order));
+      // Check against EVERY order in the cluster — not just centroid.
+      // All existing orders must be near the new order to prevent drift.
+      const allPickupsNear = cluster.orders.every(o => pickupsNear(o, order));
+      const allDropoffsNear = cluster.orders.every(o => dropoffsNear(o, order));
 
-      if (pickupMatch && dropoffMatch) {
+      if (allPickupsNear && allDropoffsNear) {
         cluster.orders.push(order);
-        // Recalculate centroids including new order
-        const pCoords = cluster.orders.filter(o => o.maidLat && o.maidLong);
-        if (pCoords.length > 0) {
-          cluster.pickupCentroidLat = pCoords.reduce((s, o) => s + o.maidLat, 0) / pCoords.length;
-          cluster.pickupCentroidLon = pCoords.reduce((s, o) => s + o.maidLong, 0) / pCoords.length;
-        }
-        const dCoords = cluster.orders.filter(o => o.clientLat && o.clientLong);
-        if (dCoords.length > 0) {
-          cluster.dropoffCentroidLat = dCoords.reduce((s, o) => s + o.clientLat, 0) / dCoords.length;
-          cluster.dropoffCentroidLon = dCoords.reduce((s, o) => s + o.clientLong, 0) / dCoords.length;
-        }
         matched = true;
         break;
       }
@@ -202,10 +206,6 @@ export function clusterOrders(orders) {
       clusters.push({
         pickupArea: getPickupArea(order),
         dropoffArea: getDropoffArea(order),
-        pickupCentroidLat: order.maidLat || null,
-        pickupCentroidLon: order.maidLong || null,
-        dropoffCentroidLat: order.clientLat || null,
-        dropoffCentroidLon: order.clientLong || null,
         orders: [order],
       });
     }

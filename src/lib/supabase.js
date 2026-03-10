@@ -171,6 +171,14 @@ export async function updateHistoryOrder(orderId, orderData) {
   if (error) throw error;
 }
 
+export async function updateHistoryFollowUpData(orderId, followUpData) {
+  const { error } = await supabase
+    .from('history_orders')
+    .update({ follow_up_data: followUpData })
+    .eq('order_id', orderId);
+  if (error) throw error;
+}
+
 export async function deleteHistoryOrder(orderId) {
   const { error } = await supabase
     .from('history_orders')

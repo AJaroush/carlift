@@ -74,10 +74,12 @@ export default function FollowUpPage() {
       if (currentPriority === 'Urgent') continue;
 
       let followUpDays = 1;
+      const creation = fo.order?.creationDate ? new Date(fo.order.creationDate.replace(' ', 'T')) : null;
       const transfer = fo.order?.transferDate ? new Date(fo.order.transferDate.replace(' ', 'T')) : null;
-      if (transfer) {
-        const transferStrip = new Date(transfer.getFullYear(), transfer.getMonth(), transfer.getDate());
-        followUpDays = Math.max(1, Math.floor((todayStrip - transferStrip) / (1000 * 60 * 60 * 24)) + 1);
+      const hireDate = creation || transfer;
+      if (hireDate) {
+        const hireStrip = new Date(hireDate.getFullYear(), hireDate.getMonth(), hireDate.getDate());
+        followUpDays = Math.max(1, Math.floor((todayStrip - hireStrip) / (1000 * 60 * 60 * 24)) + 1);
       } else if (fo.confirmedAt) {
         const confirmed = new Date(fo.confirmedAt);
         const confirmStrip = new Date(confirmed.getFullYear(), confirmed.getMonth(), confirmed.getDate());
@@ -93,17 +95,18 @@ export default function FollowUpPage() {
   const getCurrentDayForOrder = useCallback((fo) => {
     const now = new Date();
     const todayStrip = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    // Use transferDate (how long maid has been with client) to determine follow-up day
+    // Use creationDate (when hired) to determine follow-up day
+    const creation = fo.order?.creationDate ? new Date(fo.order.creationDate.replace(' ', 'T')) : null;
     const transfer = fo.order?.transferDate ? new Date(fo.order.transferDate.replace(' ', 'T')) : null;
-    if (!transfer) {
-      // Fallback to confirmedAt
+    const hireDate = creation || transfer;
+    if (!hireDate) {
       const confirmed = fo.confirmedAt ? new Date(fo.confirmedAt) : null;
       if (!confirmed) return 1;
       const confirmStrip = new Date(confirmed.getFullYear(), confirmed.getMonth(), confirmed.getDate());
       return Math.max(1, Math.floor((todayStrip - confirmStrip) / (1000 * 60 * 60 * 24)) + 1);
     }
-    const transferStrip = new Date(transfer.getFullYear(), transfer.getMonth(), transfer.getDate());
-    return Math.max(1, Math.floor((todayStrip - transferStrip) / (1000 * 60 * 60 * 24)) + 1);
+    const hireStrip = new Date(hireDate.getFullYear(), hireDate.getMonth(), hireDate.getDate());
+    return Math.max(1, Math.floor((todayStrip - hireStrip) / (1000 * 60 * 60 * 24)) + 1);
   }, []);
 
   const filteredOrders = useMemo(() => {
@@ -418,15 +421,21 @@ function FollowUpCard({ fo, data, onSave, onMoveBack, onPriorityChange, onComple
   const [showSnooze, setShowSnooze] = useState(false);
   const now = new Date();
 
+  // Use creationDate (when order was created / maid hired) for days count
+  const creationDate = order.creationDate ? new Date(order.creationDate.replace(' ', 'T')) : null;
   const transferDate = order.transferDate ? new Date(order.transferDate.replace(' ', 'T')) : null;
-  const daysHired = transferDate ? Math.max(0, Math.ceil((now - transferDate) / (1000 * 60 * 60 * 24))) : '—';
-
-  // Calculate follow-up day based on transferDate (how long maid has been with client)
+  // Pick the earliest date — creationDate is when hired, transferDate is when picked up
+  const hireDate = creationDate || transferDate;
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const daysHired = hireDate
+    ? Math.max(0, Math.floor((today - new Date(hireDate.getFullYear(), hireDate.getMonth(), hireDate.getDate())) / (1000 * 60 * 60 * 24)))
+    : '—';
+
+  // Follow-up days = same as days hired (days since creation/hire)
   let followUpDays = 1;
-  if (transferDate) {
-    const transferStrip = new Date(transferDate.getFullYear(), transferDate.getMonth(), transferDate.getDate());
-    followUpDays = Math.max(1, Math.floor((today - transferStrip) / (1000 * 60 * 60 * 24)) + 1);
+  if (hireDate) {
+    const hireStrip = new Date(hireDate.getFullYear(), hireDate.getMonth(), hireDate.getDate());
+    followUpDays = Math.max(1, Math.floor((today - hireStrip) / (1000 * 60 * 60 * 24)) + 1);
   } else if (fo.confirmedAt) {
     const confirmedDate = new Date(fo.confirmedAt);
     const confirmedDay = new Date(confirmedDate.getFullYear(), confirmedDate.getMonth(), confirmedDate.getDate());
