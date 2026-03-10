@@ -217,38 +217,50 @@ export default function FollowUpPage() {
     <>
       <div className="page-header">
         <h1>Follow-Up</h1>
-        <div className="wl-stats-row">
-          <span className="wl-stat">
-            <strong>{followUpOrders.length}</strong> maid{followUpOrders.length !== 1 ? 's' : ''}
-          </span>
-          <span className="wl-stat-divider">|</span>
-          <span className="wl-stat" style={{ color: '#F59E0B' }}>
-            <strong>{pending.length}</strong> pending
-          </span>
-          <span className="wl-stat-divider">|</span>
-          <span className="wl-stat" style={{ color: '#16A34A' }}>
-            <strong>{done.length}</strong> done today
-          </span>
-          {snoozedOrders.length > 0 && (
-            <>
-              <span className="wl-stat-divider">|</span>
-              <span className="wl-stat" style={{ color: '#F59E0B' }}>
-                <strong>{snoozedOrders.length}</strong> snoozed
-              </span>
-            </>
-          )}
-          <span className="wl-stat-divider">|</span>
-          <span className="wl-stat" style={{ color: '#3B82F6' }}>
-            <strong>{transportCounts.carlift}</strong> carlift
-          </span>
-          <span className="wl-stat-divider">|</span>
-          <span className="wl-stat" style={{ color: '#8B5CF6' }}>
-            <strong>{transportCounts.publicTransport}</strong> public transport
-          </span>
-          <span className="wl-stat-divider">|</span>
-          <span className="wl-stat" style={{ color: '#EC4899' }}>
-            <strong>{transportCounts.zoneDriver}</strong> zone driver
-          </span>
+      </div>
+
+      <div className="fu-stats-grid">
+        <div className="fu-stat-card">
+          <div className="fu-stat-icon" style={{ background: '#EFF6FF' }}>
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="3" y="3" width="16" height="16" rx="3" stroke="#3B82F6" strokeWidth="1.5"/><path d="M8 8h6M8 11h4" stroke="#3B82F6" strokeWidth="1.5" strokeLinecap="round"/></svg>
+          </div>
+          <span className="fu-stat-label">Total Maids</span>
+          <span className="fu-stat-value">{followUpOrders.length}</span>
+        </div>
+        <div className="fu-stat-card">
+          <div className="fu-stat-icon" style={{ background: '#FFFBEB' }}>
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="8" stroke="#F59E0B" strokeWidth="1.5"/><path d="M11 7v4l2.5 1.5" stroke="#F59E0B" strokeWidth="1.5" strokeLinecap="round"/></svg>
+          </div>
+          <span className="fu-stat-label">Pending</span>
+          <span className="fu-stat-value">{pending.length}</span>
+        </div>
+        <div className="fu-stat-card">
+          <div className="fu-stat-icon" style={{ background: '#F0FDF4' }}>
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="8" stroke="#16A34A" strokeWidth="1.5"/><path d="M8 11l2 2 4-4" stroke="#16A34A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </div>
+          <span className="fu-stat-label">Done Today</span>
+          <span className="fu-stat-value">{done.length}</span>
+        </div>
+        <div className="fu-stat-card">
+          <div className="fu-stat-icon" style={{ background: '#EFF6FF' }}>
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M5 17l3-3h8a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v11z" stroke="#3B82F6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </div>
+          <span className="fu-stat-label">Carlift</span>
+          <span className="fu-stat-value" style={{ color: '#3B82F6' }}>{transportCounts.carlift}</span>
+        </div>
+        <div className="fu-stat-card">
+          <div className="fu-stat-icon" style={{ background: '#F5F3FF' }}>
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="3" y="8" width="16" height="9" rx="2" stroke="#8B5CF6" strokeWidth="1.5"/><circle cx="7" cy="17" r="1.5" stroke="#8B5CF6" strokeWidth="1.2"/><circle cx="15" cy="17" r="1.5" stroke="#8B5CF6" strokeWidth="1.2"/><path d="M6 8V6a2 2 0 012-2h4" stroke="#8B5CF6" strokeWidth="1.5" strokeLinecap="round"/></svg>
+          </div>
+          <span className="fu-stat-label">Public Transport</span>
+          <span className="fu-stat-value" style={{ color: '#8B5CF6' }}>{transportCounts.publicTransport}</span>
+        </div>
+        <div className="fu-stat-card">
+          <div className="fu-stat-icon" style={{ background: '#FDF2F8' }}>
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="2" y="8" width="18" height="8" rx="2" stroke="#EC4899" strokeWidth="1.5"/><circle cx="6" cy="16" r="1.5" stroke="#EC4899" strokeWidth="1.2"/><circle cx="16" cy="16" r="1.5" stroke="#EC4899" strokeWidth="1.2"/><path d="M4 8l2-4h10l2 4" stroke="#EC4899" strokeWidth="1.5" strokeLinecap="round"/></svg>
+          </div>
+          <span className="fu-stat-label">Zone Driver</span>
+          <span className="fu-stat-value" style={{ color: '#EC4899' }}>{transportCounts.zoneDriver}</span>
         </div>
       </div>
 
