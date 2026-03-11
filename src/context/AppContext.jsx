@@ -517,6 +517,8 @@ function nearestArea(lat, lon) {
 }
 // Prevent concurrent fetchOrders from overlapping geocode work
 let isFetchingOrders = false;
+let lastFetchTime = 0;
+const FETCH_COOLDOWN_MS = 110000; // ~1m50s cooldown to prevent rapid re-fetches
 
 /**
  * Parse DMS coordinates from text, e.g. 25°14'28.3"N 55°17'04.1"E
@@ -884,7 +886,10 @@ export function AppProvider({ children }) {
       return;
     }
     if (isFetchingOrders) return;
+    const now = Date.now();
+    if (hasFetchedOnce.current && now - lastFetchTime < FETCH_COOLDOWN_MS) return;
     isFetchingOrders = true;
+    lastFetchTime = now;
     try {
       if (!hasFetchedOnce.current) setLoading(true);
       const response = await fetch(API_URL);
