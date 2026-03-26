@@ -26,7 +26,8 @@ function App() {
 }
 
 export function mapStatus(housemaidStatus) {
-  switch (housemaidStatus) {
+  const normalizedStatus = String(housemaidStatus || '').trim().toUpperCase();
+  switch (normalizedStatus) {
     case 'WITH_CLIENT': return 'Confirmed';
     case 'PENDING': return 'Pending';
     default: return 'Waiting Driver';

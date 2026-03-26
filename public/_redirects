@@ -1,3 +1,4 @@
+# Keep API proxy first so SPA fallback does not capture API calls.
  /api/*    https://n8n-analysis.teljoy.io/:splat   200
  /*        /index.html                            200
 
